@@ -9,6 +9,7 @@ pnpm-debug.log*
 
 # Turborepo
 .turbo/
+**/.turbo/
 
 # OS
 .DS_Store
