@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Backend API (Express + Node.js)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - MONGODB_URI=${MONGODB_URI}
+      - JWT_SECRET=${JWT_SECRET}
+      - SCRAPING_MODE=live
+      - SCRAPING_URL=https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx
+    depends_on: []
+    networks:
+      - spybot-network
+    restart: unless-stopped
+
+  # Frontend disabled - static UI via nginx
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports: []
+  #   environment:
+  #     - NODE_ENV=production
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - spybot-network
+  #   restart: unless-stopped
+
+  # MongoDB disabled - use live Atlas
+  # mongo:
+  #   image: mongo:7.0
+  #   ports:
+  #     - "27017:27017"
+  #   environment:
+  #     - MONGO_INITDB_ROOT_USERNAME=admin
+  #     - MONGO_INITDB_ROOT_PASSWORD=password
+  #     - MONGO_INITDB_DATABASE=spybot
+  #   volumes:
+  #     - mongo_data:/data/db
+  #     - ./mongo-init:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - spybot-network
+  #   restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    networks:
+      - spybot-network
+    restart: unless-stopped
+
+volumes:
+  mongo_data:
+
+networks:
+  spybot-network:
+    driver: bridge
