@@ -6,10 +6,27 @@ node_modules/
 .pnpm-store/
 .npmrc
 pnpm-debug.log*
+frontend/package-lock.json
 
 # Turborepo
 .turbo/
 **/.turbo/
+.next/
+**/.next/
+dist/
+**/dist/
+.cache/
+**/.cache/
+
+# Environment files
+.env
+.env.*
+**/.env
+**/.env.*
+
+# AI/agent docs not for repo
+frontend/AGENTS.md
+frontend/CLAUDE.md
 
 # OS
 .DS_Store
