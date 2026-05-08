@@ -1,0 +1,177 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* Spybot Design System - Color Palette */
+  --color-spy-surface-deep: #05070a;
+  --color-spy-surface-primary: #0b0f16;
+  --color-spy-surface-secondary: #0d121b;
+  --color-spy-border: #1f2937;
+  --color-spy-brand: #2563eb;
+  --color-spy-accent: #6366f1;
+  
+  /* Semantic Tokens */
+  --color-spy-text-primary: #ffffff;
+  --color-spy-text-secondary: #cbd5e1;
+  --color-spy-text-muted: #64748b;
+  
+  /* States */
+  --color-spy-success: #22c55e;
+  --color-spy-error: #ef4444;
+}
+
+:root {
+  --background: #05070a;
+  --foreground: #ffffff;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  @apply antialiased selection:bg-blue-500/30;
+}
+
+/* ─── Keyframe Animations ─── */
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes pulse-glow-indigo {
+  0%, 100% { box-shadow: 0 0 0px rgba(99, 102, 241, 0); }
+  50%       { box-shadow: 0 0 24px rgba(99, 102, 241, 0.45); }
+}
+
+@keyframes pulse-glow-green {
+  0%, 100% { box-shadow: 0 0 0px rgba(34, 197, 94, 0); }
+  50%       { box-shadow: 0 0 24px rgba(34, 197, 94, 0.5); }
+}
+
+@keyframes pulse-glow-blue {
+  0%, 100% { box-shadow: 0 0 0px rgba(37, 99, 235, 0); }
+  50%       { box-shadow: 0 0 24px rgba(37, 99, 235, 0.45); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(48px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ping-slow {
+  75%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes bar-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+@keyframes glow-drift {
+  0%, 100% { opacity: 0.06; transform: scale(1); }
+  50%       { opacity: 0.12; transform: scale(1.08); }
+}
+
+/* ─── Blob Drift Animations — transform only, no opacity in keyframes ─── */
+
+/* Blob A: gentle arc */
+@keyframes blob-drift-a {
+  0%   { transform: translate(0px,   0px)  scale(1);    }
+  25%  { transform: translate(70px, -50px) scale(1.06); }
+  50%  { transform: translate(50px, -80px) scale(1.09); }
+  75%  { transform: translate(-30px,-45px) scale(1.04); }
+  100% { transform: translate(0px,   0px)  scale(1);    }
+}
+
+/* Blob B: diagonal sweep */
+@keyframes blob-drift-b {
+  0%   { transform: translate(0px,   0px)  scale(1.04); }
+  30%  { transform: translate(-65px, 40px) scale(1);    }
+  60%  { transform: translate(-45px, 75px) scale(1.07); }
+  80%  { transform: translate(30px,  50px) scale(1.04); }
+  100% { transform: translate(0px,   0px)  scale(1.04); }
+}
+
+/* Blob C: slow orbit */
+@keyframes blob-drift-c {
+  0%   { transform: translate(0px,   0px)  scale(1);    }
+  25%  { transform: translate(60px, -55px) scale(1.08); }
+  50%  { transform: translate(-40px,-70px) scale(1.11); }
+  75%  { transform: translate(-65px,-30px) scale(1.05); }
+  100% { transform: translate(0px,   0px)  scale(1);    }
+}
+
+/* ─── Animation Utility Classes ─── */
+
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s ease both;
+}
+
+.animate-slide-right {
+  animation: slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-ping-slow {
+  animation: ping-slow 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.animate-pulse-indigo {
+  animation: pulse-glow-indigo 2.4s ease-in-out infinite;
+}
+
+.animate-pulse-green {
+  animation: pulse-glow-green 2.4s ease-in-out infinite;
+}
+
+.animate-pulse-blue {
+  animation: pulse-glow-blue 2.4s ease-in-out infinite;
+}
+
+.animate-bar-shimmer {
+  background: linear-gradient(90deg, #4338ca 0%, #818cf8 40%, #6366f1 60%, #4338ca 100%);
+  background-size: 200% 100%;
+  animation: bar-shimmer 1.6s linear infinite;
+}
+
+.animate-glow-drift {
+  animation: glow-drift 4s ease-in-out infinite;
+}
+
+.animate-blob-a {
+  animation: blob-drift-a 12s ease-in-out infinite;
+}
+
+.animate-blob-b {
+  animation: blob-drift-b 15s ease-in-out infinite;
+}
+
+.animate-blob-c {
+  animation: blob-drift-c 10s ease-in-out infinite;
+}
+
+/* ─── Custom Scrollbar ─── */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #05070a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2d3748;
+}
