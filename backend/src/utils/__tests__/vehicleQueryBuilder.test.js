@@ -1,4 +1,4 @@
-const { buildVehicleTripSummaryQuery } = require('../vehicleQueryBuilder');
+const { buildVehicleTripSummaryQuery, buildVehicleTripSummaryWherePrisma } = require('../vehicleQueryBuilder');
 
 describe('vehicleQueryBuilder', () => {
   test('maps status filter from spring style values', () => {
@@ -39,5 +39,21 @@ describe('vehicleQueryBuilder', () => {
     });
 
     expect(query.status).toBe('completed');
+  });
+
+  test('buildVehicleTripSummaryWherePrisma maps filters for Prisma', () => {
+    const where = buildVehicleTripSummaryWherePrisma({
+      status: 'In_Progress',
+      minTrips: '5',
+      minWeight: '1250.5',
+      vehicleRegNo: 'BR01',
+    });
+
+    expect(where.AND).toBeDefined();
+    const flat = where.AND;
+    expect(flat.some((p) => p.status === 'in-progress')).toBe(true);
+    expect(flat.some((p) => p.totalTrips?.gte === 5)).toBe(true);
+    expect(flat.some((p) => p.totalMtWeight?.gte === 1250.5)).toBe(true);
+    expect(flat.some((p) => p.OR?.length === 2)).toBe(true);
   });
 });

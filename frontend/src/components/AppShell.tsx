@@ -24,34 +24,47 @@ function toTitleCase(value: string) {
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const isAuthRoute = pathname === '/login';
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const isLogin = pathname === '/login';
+  /**
+   * Gate only protected routes — login renders immediately.
+   * On client, if user hits a dashboard URL without a token, stay on loading until effect redirects.
+   */
+  const [isCheckingAuth, setIsCheckingAuth] = useState(!isLogin);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    setIsCheckingAuth(true);
-    const token = localStorage.getItem('spybot_token');
-
-    if (isAuthRoute && token) {
-      router.replace('/dashboard/leads');
+    if (isLogin) {
+      const token = localStorage.getItem('spybot_token');
+      if (token) {
+        router.replace('/dashboard/leads');
+      }
       return;
     }
 
-    if (!isAuthRoute && !token) {
+    const token = localStorage.getItem('spybot_token');
+    if (!token) {
       router.replace('/login');
       return;
     }
 
     setIsCheckingAuth(false);
-  }, [isAuthRoute, router, pathname]);
+  }, [isLogin, pathname, router]);
 
-  if (isCheckingAuth) {
-    return <div className="min-h-screen w-full bg-[#05070a]" />;
+  if (isLogin) {
+    return <div className="min-h-screen w-full">{children}</div>;
   }
 
-  if (isAuthRoute) {
-    return <div className="min-h-screen w-full">{children}</div>;
+  if (isCheckingAuth) {
+    return (
+      <div
+        className="min-h-screen w-full bg-[#05070a] flex items-center justify-center"
+        aria-busy="true"
+        aria-label="Checking session"
+      >
+        <span className="text-slate-500 text-sm">Loading...</span>
+      </div>
+    );
   }
 
   const pathParts = pathname.split('/').filter(Boolean);

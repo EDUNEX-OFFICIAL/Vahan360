@@ -51,6 +51,7 @@ export default function Sidebar() {
             width={40}
             height={40}
             className="rounded-xl shadow-[0_0_16px_rgba(99,102,241,0.4)] shrink-0"
+            style={{ width: 'auto', height: 'auto' }}
             priority
           />
           <span className="bg-gradient-to-r from-white to-indigo-300 bg-clip-text text-transparent font-black text-xl tracking-tighter">SPYBOT</span>

@@ -15,11 +15,13 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (incl. dev) for Prisma CLI, then generate client, then drop dev deps
+RUN npm ci
 
-# Copy source code
+# Copy source and Prisma schema
 COPY . .
+RUN npx prisma generate
+RUN npm prune --omit=dev
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs

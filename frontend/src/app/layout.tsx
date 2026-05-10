@@ -16,8 +16,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={`${inter.className} bg-[#05070a] text-slate-300 min-h-screen flex selection:bg-blue-500/30`}>
+    <html lang="en" suppressHydrationWarning>
+      <body
+        suppressHydrationWarning
+        className={`${inter.className} bg-[#05070a] text-slate-300 min-h-screen flex selection:bg-blue-500/30`}
+      >
         <AppShell>{children}</AppShell>
       </body>
     </html>

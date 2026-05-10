@@ -1,10 +1,10 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const User = require('../models/User');
+const prisma = require('../db/prisma');
+const { JWT_SECRET } = require('../config/jwtSecret');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'TaK+HaV^uvCHEFsEVfypW#7g9^k*Z8$V';
 const TOKEN_EXPIRATION = '24h';
 const TOKEN_EXPIRATION_MS = 24 * 60 * 60 * 1000;
 
@@ -25,30 +25,33 @@ function buildSpringStyleTokenResponse(user) {
 router.post('/register-user', async (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
+    const usernameTrim = String(username || '').trim();
 
-    if (!username || !password) {
+    if (!usernameTrim || !password) {
       return res.status(400).json({ error: 'Username and password are required.' });
     }
 
-    const existingUser = await User.findOne({ username });
+    const existingUser = await prisma.user.findFirst({
+      where: { username: { equals: usernameTrim, mode: 'insensitive' } },
+    });
     if (existingUser) {
       return res.status(409).json({ error: 'Username already exists.' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      username,
-      password: hashedPassword,
-      roles: 'USER'
+    const savedUser = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        username: usernameTrim,
+        password: hashedPassword,
+        roles: 'USER'
+      }
     });
 
-    const savedUser = await user.save();
-
     res.json({
-      id: savedUser._id,
+      id: String(savedUser.id),
       username: savedUser.username,
       email: savedUser.email,
       roles: savedUser.roles
@@ -62,26 +65,33 @@ router.post('/register-user', async (req, res) => {
 router.post('/generate-token', async (req, res) => {
   try {
     const { username, password } = req.body;
+    const usernameNorm = String(username || '').trim();
 
-    if (!username || !password) {
+    if (!usernameNorm || !password) {
       return res.status(400).json({ error: 'Username and password are required.' });
     }
 
-    const user = await User.findOne({ username });
+    const user = await prisma.user.findFirst({
+      where: { username: { equals: usernameNorm, mode: 'insensitive' } },
+    });
     if (!user) {
       return res.status(401).json({ error: 'Invalid Credentials' });
     }
 
-    const passwordMatches = await bcrypt.compare(password, user.password);
+    const passwordMatches = await bcrypt.compare(String(password), user.password);
     if (!passwordMatches) {
       return res.status(401).json({ error: 'Invalid Credentials' });
     }
 
-    user.tokenVersion = (user.tokenVersion || 0) + 1;
-    user.updatedAt = new Date();
-    await user.save();
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        tokenVersion: (user.tokenVersion || 0) + 1,
+        updatedAt: new Date()
+      }
+    });
 
-    res.json(buildSpringStyleTokenResponse(user));
+    res.json(buildSpringStyleTokenResponse(updated));
   } catch (error) {
     console.error('Error generating token:', error);
     res.status(500).json({ error: 'Failed to generate token', details: error.message });

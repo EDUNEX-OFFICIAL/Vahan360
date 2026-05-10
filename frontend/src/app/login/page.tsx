@@ -11,7 +11,12 @@ function loginErrorMessage(data: Record<string, unknown>, status: number): strin
     (typeof data.message === 'string' && data.message) ||
     (typeof data.error === 'string' && data.error) ||
     '';
-  if (status === 401) return 'Invalid username or password.';
+  if (status === 401) {
+    return (
+      'Invalid username or password. If the database is new, from the repo root run: ' +
+      'pnpm --filter spybot-backend run sync:user — then try admin / admin123 (defaults).'
+    );
+  }
   if (status >= 500) return msg || 'Sign in is temporarily unavailable. Please try again.';
   return msg || 'Unable to sign in right now. Please try again.';
 }
@@ -35,7 +40,7 @@ export default function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/generate-token`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/generate-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: u, password }),
@@ -56,7 +61,9 @@ export default function LoginPage() {
       localStorage.setItem('spybot_token', String(data.token));
       router.replace('/dashboard/leads');
     } catch {
-      setError('Connection issue detected. Please try again in a moment.');
+      setError(
+        'Cannot reach the API. Is the backend running on the same host as NEXT_PUBLIC_API_BASE_URL (default http://localhost:5000)?'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -101,7 +108,8 @@ export default function LoginPage() {
               alt="Spybot Verifacts"
               width={96}
               height={96}
-              className="drop-shadow-[0_0_24px_rgba(99,102,241,0.55)]"
+              className="h-auto w-auto max-w-[96px] drop-shadow-[0_0_24px_rgba(99,102,241,0.55)]"
+              style={{ width: 'auto', height: 'auto' }}
               priority
             />
           </div>

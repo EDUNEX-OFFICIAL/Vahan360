@@ -8,6 +8,26 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
 
 Point this at wherever `spybot-nextjs/backend` listens (`BACKEND_PORT` in backend `.env`). Restart Next after changes.
 
+**Dev bundler:** `pnpm dev` uses **`next dev --webpack`** (not Turbopack) for more stable local runs on Windows; production `pnpm build` is unchanged.
+
+### Quick QA (manual)
+
+| Check | Expected |
+|-------|-----------|
+| `/` | Redirects to `/login` |
+| `/login` | Form visible immediately (no infinite blank); sign-in posts to `NEXT_PUBLIC_API_BASE_URL/api/auth/generate-token` |
+| `/dashboard/*` without token | Redirect to `/login` |
+| `/dashboard/leads` etc. with token | Dashboard layout + page |
+| Backend `GET /health` | `{ "status": "OK", ... }` |
+
+### Khanan and Leads synchronization
+
+- Khanan scrape writes raw rows to `khanan_data`.
+- Leads dashboard reads `vehicle_trip_summary` (`/api/vehicle/trip-summary` and `/api/vehicle/stats`).
+- If auto-sync is not enabled in backend, run `Sync Vehicles` on Leads (calls `POST /api/vehicle/sync`) after scraping so Leads reflects latest Khanan rows.
+- Scraper API now blocks redundant runs when requested date scope is already present in `khanan_data`; backend returns a clear skip message.
+- `last run` is persisted in DB-backed scraper state, so restart/reload still shows latest completed run metadata.
+
 ## Run
 
 1. Start backend: `cd spybot-nextjs/backend && npm run dev`

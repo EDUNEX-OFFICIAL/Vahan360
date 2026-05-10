@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User');
-const JWT_SECRET = process.env.JWT_SECRET || 'TaK+HaV^uvCHEFsEVfypW#7g9^k*Z8$V';
+const prisma = require('../db/prisma');
+const { JWT_SECRET } = require('../config/jwtSecret');
 
 const authMiddleware = async (req, res, next) => {
   const authHeader = req.header('Authorization') || '';
@@ -17,7 +17,10 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid token.' });
     }
 
-    const user = await User.findOne({ username }).select('username roles tokenVersion');
+    const user = await prisma.user.findUnique({
+      where: { username },
+      select: { username: true, roles: true, tokenVersion: true }
+    });
     if (!user) {
       return res.status(401).json({ error: 'Invalid token.' });
     }

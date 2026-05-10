@@ -23,6 +23,25 @@ dist/
 .env.*
 **/.env
 **/.env.*
+!**/.env.example
+
+# Sensitive credentials and keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_rsa.pub
+credentials.json
+**/credentials.json
+service-account*.json
+firebase-adminsdk*.json
+secrets/
+**/secrets/
+*.secret
 
 # AI/agent docs not for repo
 frontend/AGENTS.md

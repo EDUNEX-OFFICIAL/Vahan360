@@ -1,15 +1,14 @@
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
+
 const express = require("express");
-const mongoose = require("mongoose");
 const dns = require("dns");
 const cors = require("cors");
 const helmet = require("helmet");
 const compression = require("compression");
 const rateLimit = require("express-rate-limit");
-require("dotenv").config();
 
-// Fix Windows/Node SRV resolver issue for MongoDB+SRV
-// Some local DNS setups refuse direct querySrv calls from Node.
-// PowerShell DNS resolution may work while Node still fails with ECONNREFUSED.
+// Fix Windows/Node SRV resolver issue for MongoDB+SRV (legacy / tooling only)
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 console.log("DNS resolver set to:", dns.getServers());
 
@@ -34,13 +33,18 @@ const limiter = rateLimit({
 app.use("/api/auth", require("./routes/auth"));
 app.use("/auth", require("./routes/auth"));
 
-// MongoDB connection
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/spybot", {
-    dbName: process.env.MONGODB_DB_NAME || "khanan_db",
-  })
-  .then(() => console.log("✅ MongoDB connected"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+// Postgres connectivity smoke (safe in production — only SELECT 1 / count)
+app.get("/api/health/pg", async (req, res) => {
+  try {
+    const prisma = require("./db/prisma");
+    await prisma.$queryRaw`SELECT 1`;
+    const userCount = await prisma.user.count();
+    res.json({ ok: true, database: "postgresql", userCount });
+  } catch (err) {
+    console.error("PG health check failed:", err.message);
+    res.status(503).json({ ok: false, error: err.message });
+  }
+});
 
 // Auth middleware
 const authMiddleware = require("./middleware/auth");
@@ -68,6 +72,19 @@ app.use("*", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  setImmediate(async () => {
+    try {
+      const prisma = require("./db/prisma");
+      const n = await prisma.user.count();
+      if (n === 0) {
+        console.warn(
+          "⚠️  No users in PostgreSQL. Create one: cd backend && npm run sync:user (default admin / admin123)"
+        );
+      }
+    } catch {
+      /* DB unreachable — DATABASE_URL / Postgres */
+    }
+  });
 });
 
 module.exports = app;

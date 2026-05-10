@@ -1,10 +1,13 @@
 const puppeteer = require('puppeteer');
-const KhananData = require('../models/KhananData');
+const prisma = require('../db/prisma');
 
 class PuppeteerService {
   constructor() {
+    this.runStateId = 'khanan-scraper';
     this.isProcessing = false;
+    this.isVehicleSummarySyncRunning = false;
     this.currentStatusMessage = 'IDLE';
+    this.hasWarnedMissingRunStateDelegate = false;
     this.currentRunStats = null;
     this.lastRunSummary = null;
     this.invalidHref = 'https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx#';
@@ -21,6 +24,15 @@ class PuppeteerService {
     });
   }
 
+  getRunStateDelegate() {
+    const delegate = prisma && prisma.scraperRunState;
+    if (!delegate && !this.hasWarnedMissingRunStateDelegate) {
+      this.hasWarnedMissingRunStateDelegate = true;
+      console.warn('scraperRunState delegate unavailable on Prisma client. Run `npx prisma generate` and restart backend.');
+    }
+    return delegate;
+  }
+
   isCurrentlyRunning() {
     return this.isProcessing;
   }
@@ -29,11 +41,14 @@ class PuppeteerService {
     return this.currentStatusMessage;
   }
 
-  getRunSummary() {
+  async getRunSummary() {
+    if (!this.lastRunSummary) {
+      await this.loadLastRunFromDb();
+    }
     return this.lastRunSummary;
   }
 
-  startRun(mode, fromDate, toDate) {
+  async startRun(mode, fromDate, toDate) {
     this.currentRunStats = {
       mode,
       fromDate: fromDate || null,
@@ -43,19 +58,157 @@ class PuppeteerService {
       success: null,
       insertedCount: 0,
       duplicateSkipped: 0,
+      approxRowsSkipped: 0,
+      vehicleSummarySync: 'not-configured',
+      vehicleSummarySyncCount: 0,
+      vehicleSummarySyncError: null,
       hadErrors: false,
       error: null,
     };
+    await this.persistCurrentRunState({ success: null });
   }
 
-  endRun(success, errorMessage) {
+  async endRun(success, errorMessage) {
     if (!this.currentRunStats) return;
     if (success && this.currentRunStats.hadErrors) success = false;
     this.currentRunStats.endedAt = new Date().toISOString();
     this.currentRunStats.success = success;
     this.currentRunStats.error = errorMessage || this.currentRunStats.error || null;
     this.lastRunSummary = { ...this.currentRunStats };
+    await this.persistCurrentRunState({ success });
     this.currentRunStats = null;
+  }
+
+  async loadLastRunFromDb() {
+    try {
+      const runState = this.getRunStateDelegate();
+      if (!runState) {
+        await this.backfillRunSummaryFromLatestKhananRow();
+        return;
+      }
+      const row = await runState.findUnique({
+        where: { id: this.runStateId },
+      });
+      if (!row) {
+        await this.backfillRunSummaryFromLatestKhananRow();
+        return;
+      }
+      this.lastRunSummary = {
+        mode: 'persisted',
+        fromDate: row.lastFromDate,
+        toDate: row.lastToDate,
+        startedAt: row.lastStartedAt ? row.lastStartedAt.toISOString() : null,
+        endedAt: row.lastEndedAt ? row.lastEndedAt.toISOString() : null,
+        success: row.lastSuccess,
+        insertedCount: row.lastInsertedCount || 0,
+        duplicateSkipped: row.lastDuplicateSkipped || 0,
+        approxRowsSkipped: row.lastDuplicateSkipped || 0,
+        vehicleSummarySync: 'unknown',
+        vehicleSummarySyncCount: 0,
+        vehicleSummarySyncError: null,
+        hadErrors: Boolean(row.lastError),
+        error: row.lastError || null,
+      };
+    } catch (error) {
+      console.warn(`Failed loading scraper run-state: ${error.message}`);
+      await this.backfillRunSummaryFromLatestKhananRow();
+    }
+  }
+
+  async backfillRunSummaryFromLatestKhananRow() {
+    try {
+      const latest = await prisma.khananData.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          createdAt: true,
+          date: true,
+        },
+      });
+      if (!latest) return;
+
+      const ts = latest.createdAt.toISOString();
+      this.lastRunSummary = {
+        mode: 'backfilled-from-khanan-data',
+        fromDate: latest.date || null,
+        toDate: latest.date || null,
+        startedAt: ts,
+        endedAt: ts,
+        success: true,
+        insertedCount: 0,
+        duplicateSkipped: 0,
+        approxRowsSkipped: 0,
+        vehicleSummarySync: 'unknown',
+        vehicleSummarySyncCount: 0,
+        vehicleSummarySyncError: null,
+        hadErrors: false,
+        error: null,
+      };
+
+      const runState = this.getRunStateDelegate();
+      if (!runState) return;
+      await runState.upsert({
+        where: { id: this.runStateId },
+        create: {
+          id: this.runStateId,
+          lastStartedAt: latest.createdAt,
+          lastEndedAt: latest.createdAt,
+          lastSuccess: true,
+          lastFromDate: latest.date || null,
+          lastToDate: latest.date || null,
+          lastError: null,
+          lastInsertedCount: 0,
+          lastDuplicateSkipped: 0,
+        },
+        update: {
+          lastStartedAt: latest.createdAt,
+          lastEndedAt: latest.createdAt,
+          lastSuccess: true,
+          lastFromDate: latest.date || null,
+          lastToDate: latest.date || null,
+          lastError: null,
+          lastInsertedCount: 0,
+          lastDuplicateSkipped: 0,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      console.warn(`Failed backfilling scraper run summary: ${error.message}`);
+    }
+  }
+
+  async persistCurrentRunState({ success = null } = {}) {
+    if (!this.currentRunStats) return;
+    try {
+      const runState = this.getRunStateDelegate();
+      if (!runState) return;
+      await runState.upsert({
+        where: { id: this.runStateId },
+        create: {
+          id: this.runStateId,
+          lastStartedAt: this.currentRunStats.startedAt ? new Date(this.currentRunStats.startedAt) : null,
+          lastEndedAt: this.currentRunStats.endedAt ? new Date(this.currentRunStats.endedAt) : null,
+          lastSuccess: success,
+          lastFromDate: this.currentRunStats.fromDate || null,
+          lastToDate: this.currentRunStats.toDate || null,
+          lastError: this.currentRunStats.error || null,
+          lastInsertedCount: Number(this.currentRunStats.insertedCount) || 0,
+          lastDuplicateSkipped: Number(this.currentRunStats.duplicateSkipped) || 0,
+        },
+        update: {
+          lastStartedAt: this.currentRunStats.startedAt ? new Date(this.currentRunStats.startedAt) : null,
+          lastEndedAt: this.currentRunStats.endedAt ? new Date(this.currentRunStats.endedAt) : null,
+          lastSuccess: success,
+          lastFromDate: this.currentRunStats.fromDate || null,
+          lastToDate: this.currentRunStats.toDate || null,
+          lastError: this.currentRunStats.error || null,
+          lastInsertedCount: Number(this.currentRunStats.insertedCount) || 0,
+          lastDuplicateSkipped: Number(this.currentRunStats.duplicateSkipped) || 0,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      console.warn(`Failed persisting scraper run-state: ${error.message}`);
+    }
   }
 
   async launchBrowser() {
@@ -122,9 +275,10 @@ class PuppeteerService {
     if (this.isLocalMode(url)) {
       try {
         this.isProcessing = true;
-        this.startRun('local', fromDate, toDate);
+        await this.startRun('local', fromDate, toDate);
         await this.runLocalScraping(fromDate, toDate);
-        this.endRun(true);
+        await this.maybeAutoSyncVehicleSummaries('local');
+        await this.endRun(true);
       } finally {
         this.isProcessing = false;
         this.currentStatusMessage = 'IDLE - Last local run completed at ' + new Date().toISOString();
@@ -137,7 +291,7 @@ class PuppeteerService {
 
     try {
       this.isProcessing = true;
-      this.startRun('live', fromDate, toDate);
+      await this.startRun('live', fromDate, toDate);
       browser = await this.launchBrowser();
       const startDate = this.parseDate(fromDate);
       const endDate = this.parseDate(toDate);
@@ -160,17 +314,62 @@ class PuppeteerService {
         await this.processDateIteration(browser, url, dateSelector, currentDate, showButtonSelector);
         currentDate.setDate(currentDate.getDate() + step);
       }
+      await this.maybeAutoSyncVehicleSummaries('live');
     } catch (error) {
       console.error('Critical Failure in Scraper:', error);
-      this.endRun(false, error.message);
+      await this.endRun(false, error.message);
     } finally {
       this.isProcessing = false;
       if (!this.lastRunSummary || this.lastRunSummary.startedAt !== this.currentRunStats?.startedAt) {
-        this.endRun(true);
+        await this.endRun(true);
       }
       this.currentStatusMessage = 'IDLE - Last run completed at ' + new Date().toISOString();
       await this.safeCloseBrowser(browser);
       console.log('Resources cleaned up successfully.');
+    }
+  }
+
+  shouldAutoSyncVehicleSummaries() {
+    const flag = String(process.env.SCRAPE_AUTO_SYNC_VEHICLES || '').trim().toLowerCase();
+    return flag === '1' || flag === 'true';
+  }
+
+  async maybeAutoSyncVehicleSummaries(modeLabel) {
+    if (!this.currentRunStats) return;
+
+    if (!this.shouldAutoSyncVehicleSummaries()) {
+      this.currentRunStats.vehicleSummarySync = 'disabled';
+      return;
+    }
+
+    if (this.isVehicleSummarySyncRunning) {
+      this.currentRunStats.vehicleSummarySync = 'skipped-already-running';
+      return;
+    }
+
+    const startedAt = new Date().toISOString();
+    this.currentRunStats.vehicleSummarySync = 'running';
+    this.currentRunStats.vehicleSummarySyncStartedAt = startedAt;
+    this.currentStatusMessage = `RUNNING: Syncing vehicle summaries (${modeLabel})`;
+    this.isVehicleSummarySyncRunning = true;
+
+    try {
+      const { aggregateVehicles } = require('../utils/vehicleAggregator');
+      const count = await aggregateVehicles();
+      this.currentRunStats.vehicleSummarySync = 'completed';
+      this.currentRunStats.vehicleSummarySyncCount = Number(count) || 0;
+      this.currentRunStats.vehicleSummarySyncError = null;
+    } catch (error) {
+      console.error('Vehicle summary auto-sync failed:', error);
+      this.currentRunStats.vehicleSummarySync = 'failed';
+      this.currentRunStats.vehicleSummarySyncError = error.message;
+      this.currentRunStats.hadErrors = true;
+      if (!this.currentRunStats.error) {
+        this.currentRunStats.error = `Vehicle summary auto-sync failed: ${error.message}`;
+      }
+    } finally {
+      this.currentRunStats.vehicleSummarySyncEndedAt = new Date().toISOString();
+      this.isVehicleSummarySyncRunning = false;
     }
   }
 
@@ -191,7 +390,7 @@ class PuppeteerService {
       const formattedDate = this.formatDate(current);
 
       const batch = [
-        new KhananData({
+        {
           district: 'Patna',
           consignerName: 'Local Consigner',
           date: formattedDate,
@@ -206,8 +405,8 @@ class PuppeteerService {
           quantity: '18.5',
           unit: 'MT',
           checkStatus: 'Generated locally'
-        }),
-        new KhananData({
+        },
+        {
           district: 'Gaya',
           consignerName: 'Local Consigner',
           date: formattedDate,
@@ -222,7 +421,7 @@ class PuppeteerService {
           quantity: '22.0',
           unit: 'MT',
           checkStatus: 'Generated locally'
-        })
+        }
       ];
 
       const insertedCount = await this.insertKhananBatch(batch);
@@ -235,7 +434,6 @@ class PuppeteerService {
       }
     }
 
-    if (this.currentRunStats) this.currentRunStats.insertedCount += savedCount;
     console.log(`Local Khanan scraping completed with ${savedCount} generated records`);
   }
 
@@ -341,7 +539,7 @@ class PuppeteerService {
             const firstCellText = await cols[0].evaluate(el => el.textContent.trim());
             if (firstCellText.includes('No Data Found')) continue;
 
-            const khananData = new KhananData({
+            const khananData = {
               district,
               consignerName: consigner,
               date: dateVal,
@@ -356,7 +554,7 @@ class PuppeteerService {
               quantity: await this.getColumnText(cols, 8),
               unit: await this.getColumnText(cols, 9),
               checkStatus: await this.getColumnText(cols, 10)
-            });
+            };
 
             pageBatch.push(khananData);
           } catch (error) {
@@ -366,10 +564,6 @@ class PuppeteerService {
 
         if (pageBatch.length > 0) {
           const insertedCount = await this.insertKhananBatch(pageBatch);
-          if (this.currentRunStats) {
-            this.currentRunStats.insertedCount += insertedCount;
-            this.currentRunStats.duplicateSkipped += Math.max(0, pageBatch.length - insertedCount);
-          }
           console.log(`Saved batch of ${insertedCount} new records`);
           return;
         }
@@ -541,16 +735,42 @@ class PuppeteerService {
   }
 
   async insertKhananBatch(batch) {
-    try {
-      const docs = await KhananData.insertMany(batch, { ordered: false });
-      return docs.length;
-    } catch (error) {
-      if (error.code === 11000 || error.name === 'MongoBulkWriteError') {
-        const insertedCount = error.result?.insertedCount || error.insertedDocs?.length || 0;
-        console.warn(`Skipped duplicate challan records. Inserted ${insertedCount} new records.`);
-        return insertedCount;
-      }
+    if (!batch.length) return 0;
+    const rows = batch.map((doc) => {
+      const d = doc.toObject ? doc.toObject() : doc;
+      return {
+        district: d.district,
+        consignerName: d.consignerName,
+        date: d.date,
+        sourceType: d.sourceType,
+        consigneeName: d.consigneeName,
+        challanNo: d.challanNo,
+        mineralName: d.mineralName,
+        mineralCategory: d.mineralCategory,
+        vehicleRegNo: d.vehicleRegNo,
+        destination: d.destination,
+        transportedDate: d.transportedDate,
+        quantity: String(d.quantity ?? '0'),
+        unit: d.unit,
+        checkStatus: d.checkStatus ?? 'Pending',
+      };
+    });
 
+    try {
+      const result = await prisma.khananData.createMany({
+        data: rows,
+        skipDuplicates: true,
+      });
+      const inserted = result.count;
+      const skippedApprox = Math.max(0, rows.length - inserted);
+      if (this.currentRunStats) {
+        this.currentRunStats.insertedCount += inserted;
+        this.currentRunStats.duplicateSkipped += skippedApprox;
+        this.currentRunStats.approxRowsSkipped += skippedApprox;
+      }
+      return inserted;
+    } catch (error) {
+      console.error('insertKhananBatch failed:', error.message);
       throw error;
     }
   }
@@ -558,7 +778,7 @@ class PuppeteerService {
   async triggerDailyScraping() {
     if (this.isProcessing) {
       console.warn('Manual trigger skipped: Scraper is already running.');
-      return;
+      return false;
     }
 
     const yesterday = new Date();
@@ -575,8 +795,10 @@ class PuppeteerService {
         dateStr,
         '#ctl00_MainContent_btnshow'
       );
+      return true;
     } catch (error) {
       console.error(`Manual scraping failed for date ${dateStr}:`, error);
+      throw error;
     }
   }
 }

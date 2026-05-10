@@ -1,6 +1,8 @@
 const express = require('express');
+const prisma = require('../db/prisma');
+const { serializeKhananRow } = require('../utils/serializeApi');
+
 const router = express.Router();
-const KhananData = require('../models/KhananData');
 
 const dateFormatter = new Intl.DateTimeFormat('en-IN', {
   day: '2-digit',
@@ -50,6 +52,28 @@ function buildDateRange(fromDate, toDate) {
   return dates;
 }
 
+function buildKhananWhere(query) {
+  const {
+    district,
+    fromDate,
+    toDate,
+    mineralName,
+    vehicleRegNo,
+  } = query;
+
+  const where = {};
+  if (district) where.district = district;
+  if (mineralName) where.mineralName = mineralName;
+  if (vehicleRegNo) {
+    where.vehicleRegNo = { contains: vehicleRegNo, mode: 'insensitive' };
+  }
+
+  const dateRange = buildDateRange(fromDate, toDate);
+  if (dateRange) where.date = { in: dateRange };
+
+  return where;
+}
+
 // GET /api/khanan/data - Get khanan data with filters
 router.get('/data', async (req, res) => {
   try {
@@ -63,32 +87,35 @@ router.get('/data', async (req, res) => {
       limit = 50
     } = req.query;
 
-    // Build query
-    const query = {};
-    if (district) query.district = district;
-    if (mineralName) query.mineralName = mineralName;
-    if (vehicleRegNo) query.vehicleRegNo = vehicleRegNo;
+    const where = buildKhananWhere({
+      district,
+      fromDate,
+      toDate,
+      mineralName,
+      vehicleRegNo,
+    });
 
-    const dateRange = buildDateRange(fromDate, toDate);
-    if (dateRange) query.date = { $in: dateRange };
+    const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const [data, total] = await Promise.all([
-      KhananData.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(parseInt(limit)),
-      KhananData.countDocuments(query)
+    const [rows, total] = await Promise.all([
+      prisma.khananData.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: parseInt(limit, 10),
+      }),
+      prisma.khananData.count({ where }),
     ]);
+
+    const data = rows.map(serializeKhananRow);
 
     res.json({
       data,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / parseInt(limit, 10))
       }
     });
 
@@ -106,47 +133,41 @@ router.get('/stats', async (req, res) => {
   try {
     const { fromDate, toDate } = req.query;
 
-    const matchStage = {};
-    const dateRange = buildDateRange(fromDate, toDate);
-    if (dateRange) matchStage.date = { $in: dateRange };
+    const where = buildKhananWhere({ fromDate, toDate });
 
-    const stats = await KhananData.aggregate([
-      { $match: matchStage },
-      {
-        $group: {
-          _id: null,
-          totalRecords: { $sum: 1 },
-          totalQuantity: {
-            $sum: {
-              $convert: {
-                input: '$quantity',
-                to: 'double',
-                onError: 0,
-                onNull: 0
-              }
-            }
-          },
-          districts: { $addToSet: '$district' },
-          minerals: { $addToSet: '$mineralName' },
-          uniqueVehicles: { $addToSet: '$vehicleRegNo' }
-        }
-      }
+    const [agg, districtRows, mineralRows, vehicleRows] = await Promise.all([
+      prisma.khananData.aggregate({
+        where,
+        _sum: { quantity: true },
+        _count: { _all: true },
+      }),
+      prisma.khananData.findMany({
+        where,
+        distinct: ['district'],
+        select: { district: true },
+      }),
+      prisma.khananData.findMany({
+        where,
+        distinct: ['mineralName'],
+        select: { mineralName: true },
+      }),
+      prisma.khananData.findMany({
+        where,
+        distinct: ['vehicleRegNo'],
+        select: { vehicleRegNo: true },
+      }),
     ]);
 
-    const result = stats[0] || {
-      totalRecords: 0,
-      totalQuantity: 0,
-      districts: [],
-      minerals: [],
-      uniqueVehicles: []
-    };
+    const totalQuantity = agg._sum.quantity != null
+      ? Number(agg._sum.quantity.toString())
+      : 0;
 
     res.json({
-      totalRecords: result.totalRecords,
-      totalQuantity: result.totalQuantity,
-      districtCount: result.districts.length,
-      mineralCount: result.minerals.length,
-      uniqueVehicleCount: result.uniqueVehicles.length
+      totalRecords: agg._count._all,
+      totalQuantity,
+      districtCount: districtRows.length,
+      mineralCount: mineralRows.length,
+      uniqueVehicleCount: vehicleRows.length,
     });
 
   } catch (error) {
@@ -161,7 +182,12 @@ router.get('/stats', async (req, res) => {
 // GET /api/khanan/districts - Get unique districts
 router.get('/districts', async (req, res) => {
   try {
-    const districts = await KhananData.distinct('district');
+    const rows = await prisma.khananData.findMany({
+      distinct: ['district'],
+      select: { district: true },
+      orderBy: { district: 'asc' },
+    });
+    const districts = rows.map(r => r.district).filter(Boolean);
     res.json({ districts: districts.sort() });
   } catch (error) {
     console.error('Error fetching districts:', error);
@@ -175,7 +201,12 @@ router.get('/districts', async (req, res) => {
 // GET /api/khanan/minerals - Get unique minerals
 router.get('/minerals', async (req, res) => {
   try {
-    const minerals = await KhananData.distinct('mineralName');
+    const rows = await prisma.khananData.findMany({
+      distinct: ['mineralName'],
+      select: { mineralName: true },
+      orderBy: { mineralName: 'asc' },
+    });
+    const minerals = rows.map(r => r.mineralName).filter(Boolean);
     res.json({ minerals: minerals.sort() });
   } catch (error) {
     console.error('Error fetching minerals:', error);

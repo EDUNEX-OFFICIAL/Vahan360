@@ -1,26 +1,32 @@
 const express = require('express');
-const router = express.Router();
-const VehicleTripSummary = require('../models/VehicleTripSummary');
-const { buildVehicleTripSummaryQuery } = require('../utils/vehicleQueryBuilder');
+const prisma = require('../db/prisma');
+const { buildVehicleTripSummaryWherePrisma } = require('../utils/vehicleQueryBuilder');
 const { deriveLifecycleFields, normalizeVehicleRegNo } = require('../utils/leadLifecycle');
+const { serializeVehicleTripSummaryRow } = require('../utils/serializeApi');
+
+const router = express.Router();
 
 // GET /api/vehicle/trip-summary - Get vehicle trip summaries
 router.get('/trip-summary', async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
-    const query = buildVehicleTripSummaryQuery(req.query);
+    const where = buildVehicleTripSummaryWherePrisma(req.query);
 
     const pageNumber = Math.max(1, parseInt(page, 10) || 1);
     const limitNumber = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
     const skip = (pageNumber - 1) * limitNumber;
 
-    const [data, total] = await Promise.all([
-      VehicleTripSummary.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limitNumber),
-      VehicleTripSummary.countDocuments(query)
+    const [rows, total] = await Promise.all([
+      prisma.vehicleTripSummary.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNumber,
+      }),
+      prisma.vehicleTripSummary.count({ where }),
     ]);
+
+    const data = rows.map(serializeVehicleTripSummaryRow);
 
     res.json({
       data,
@@ -47,8 +53,10 @@ router.get('/trip-summary/:vehicleRegNo', async (req, res) => {
     const { vehicleRegNo: rawVehicleRegNo } = req.params;
     const vehicleRegNo = normalizeVehicleRegNo(rawVehicleRegNo);
 
-    const summary = await VehicleTripSummary.findOne({
-      vehicleRegNo: new RegExp(`^${vehicleRegNo}$`, 'i')
+    const summary = await prisma.vehicleTripSummary.findFirst({
+      where: {
+        vehicleRegNo: { equals: vehicleRegNo, mode: 'insensitive' },
+      },
     });
 
     if (!summary) {
@@ -57,7 +65,7 @@ router.get('/trip-summary/:vehicleRegNo', async (req, res) => {
       });
     }
 
-    res.json({ data: summary });
+    res.json({ data: serializeVehicleTripSummaryRow(summary) });
 
   } catch (error) {
     console.error('Error fetching vehicle trip summary:', error);
@@ -123,8 +131,15 @@ router.post('/trip-summary', async (req, res) => {
       });
     }
 
-    const existingSummary = await VehicleTripSummary.findOne({ vehicleRegNo: normalizedVehicleRegNo })
-      .select('status nextFollowUp assignedExecutive');
+    const existingSummary = await prisma.vehicleTripSummary.findUnique({
+      where: { vehicleRegNo: normalizedVehicleRegNo },
+      select: {
+        status: true,
+        nextFollowUp: true,
+        assignedExecutive: true,
+      },
+    });
+
     const lifecycle = deriveLifecycleFields({
       incomingStatus: status,
       existingStatus: existingSummary?.status,
@@ -135,17 +150,16 @@ router.post('/trip-summary', async (req, res) => {
       ownerName,
     });
 
-    // Upsert: update if exists, create if not
-    const summary = await VehicleTripSummary.findOneAndUpdate(
-      { vehicleRegNo: normalizedVehicleRegNo },
-      {
+    const summary = await prisma.vehicleTripSummary.upsert({
+      where: { vehicleRegNo: normalizedVehicleRegNo },
+      create: {
         vehicleRegNo: normalizedVehicleRegNo,
         totalTrips: totalTrips || 0,
-        totalMTWeight: totalMTWeight || 0,
+        totalMtWeight: totalMTWeight || 0,
         sandTrips: sandTrips || 0,
-        sandMTWeight: sandMTWeight || 0,
+        sandMtWeight: sandMTWeight || 0,
         stoneTrips: stoneTrips || 0,
-        stoneMTWeight: stoneMTWeight || 0,
+        stoneMtWeight: stoneMTWeight || 0,
         ownerName,
         mobileNo,
         make,
@@ -162,11 +176,11 @@ router.post('/trip-summary', async (req, res) => {
         permanentDistrict,
         insuranceCompany,
         insurancePolicyNo,
-        insuranceDueDate,
-        permitValidUpto,
-        fitnessValidUpto,
-        pollutionValidUpto,
-        mvTaxPaidUpto,
+        insuranceDueDate: insuranceDueDate ? new Date(insuranceDueDate) : undefined,
+        permitValidUpto: permitValidUpto ? new Date(permitValidUpto) : undefined,
+        fitnessValidUpto: fitnessValidUpto ? new Date(fitnessValidUpto) : undefined,
+        pollutionValidUpto: pollutionValidUpto ? new Date(pollutionValidUpto) : undefined,
+        mvTaxPaidUpto: mvTaxPaidUpto ? new Date(mvTaxPaidUpto) : undefined,
         leadSource,
         offence,
         panNumber,
@@ -180,18 +194,57 @@ router.post('/trip-summary', async (req, res) => {
         customerType,
         status: lifecycle.status,
         nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : lifecycle.nextFollowUp,
-        assignedExecutive: assignedExecutive || lifecycle.assignedExecutive
+        assignedExecutive: assignedExecutive || lifecycle.assignedExecutive,
       },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true
-      }
-    );
+      update: {
+        totalTrips: totalTrips || 0,
+        totalMtWeight: totalMTWeight || 0,
+        sandTrips: sandTrips || 0,
+        sandMtWeight: sandMTWeight || 0,
+        stoneTrips: stoneTrips || 0,
+        stoneMtWeight: stoneMTWeight || 0,
+        ownerName,
+        mobileNo,
+        make,
+        model,
+        gvwKgs,
+        unladenWeightKgs,
+        vehicleCategory,
+        fatherName,
+        currentFullAddress,
+        currentPincode,
+        currentDistrict,
+        permanentFullAddress,
+        permanentPincode,
+        permanentDistrict,
+        insuranceCompany,
+        insurancePolicyNo,
+        insuranceDueDate: insuranceDueDate ? new Date(insuranceDueDate) : undefined,
+        permitValidUpto: permitValidUpto ? new Date(permitValidUpto) : undefined,
+        fitnessValidUpto: fitnessValidUpto ? new Date(fitnessValidUpto) : undefined,
+        pollutionValidUpto: pollutionValidUpto ? new Date(pollutionValidUpto) : undefined,
+        mvTaxPaidUpto: mvTaxPaidUpto ? new Date(mvTaxPaidUpto) : undefined,
+        leadSource,
+        offence,
+        panNumber,
+        panAddress,
+        gstin,
+        legalName,
+        gstTradeName,
+        gstContact,
+        gstEmail,
+        khananPhone,
+        customerType,
+        status: lifecycle.status,
+        nextFollowUp: nextFollowUp ? new Date(nextFollowUp) : lifecycle.nextFollowUp,
+        assignedExecutive: assignedExecutive || lifecycle.assignedExecutive,
+        updatedAt: new Date(),
+      },
+    });
 
     res.json({
       message: 'Vehicle trip summary saved successfully',
-      data: summary
+      data: serializeVehicleTripSummaryRow(summary)
     });
 
   } catch (error) {
@@ -206,27 +259,26 @@ router.post('/trip-summary', async (req, res) => {
 // GET /api/vehicle/stats - Get vehicle statistics
 router.get('/stats', async (req, res) => {
   try {
-    const stats = await VehicleTripSummary.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalVehicles: { $sum: 1 },
-          totalTrips: { $sum: '$totalTrips' },
-          totalWeight: { $sum: '$totalMTWeight' },
-          sandTrips: { $sum: '$sandTrips' },
-          stoneTrips: { $sum: '$stoneTrips' },
-          avgTripsPerVehicle: { $avg: '$totalTrips' }
-        }
-      }
-    ]);
+    const agg = await prisma.vehicleTripSummary.aggregate({
+      _count: { _all: true },
+      _sum: {
+        totalTrips: true,
+        totalMtWeight: true,
+        sandTrips: true,
+        stoneTrips: true,
+      },
+      _avg: {
+        totalTrips: true,
+      },
+    });
 
-    const result = stats[0] || {
-      totalVehicles: 0,
-      totalTrips: 0,
-      totalWeight: 0,
-      sandTrips: 0,
-      stoneTrips: 0,
-      avgTripsPerVehicle: 0
+    const result = {
+      totalVehicles: agg._count._all,
+      totalTrips: agg._sum.totalTrips || 0,
+      totalWeight: agg._sum.totalMtWeight || 0,
+      sandTrips: agg._sum.sandTrips || 0,
+      stoneTrips: agg._sum.stoneTrips || 0,
+      avgTripsPerVehicle: agg._avg.totalTrips ?? 0,
     };
 
     res.json(result);
@@ -243,9 +295,13 @@ router.get('/stats', async (req, res) => {
 // GET /api/vehicle/owners - Get unique owners
 router.get('/owners', async (req, res) => {
   try {
-    const owners = await VehicleTripSummary.distinct('ownerName', {
-      ownerName: { $ne: null, $exists: true }
+    const rows = await prisma.vehicleTripSummary.findMany({
+      where: { ownerName: { not: null } },
+      distinct: ['ownerName'],
+      select: { ownerName: true },
+      orderBy: { ownerName: 'asc' },
     });
+    const owners = rows.map(r => r.ownerName).filter(Boolean);
     res.json({ owners: owners.sort() });
   } catch (error) {
     console.error('Error fetching owners:', error);

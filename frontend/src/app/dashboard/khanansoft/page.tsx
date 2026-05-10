@@ -7,6 +7,19 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5
 const STATS_SNAPSHOT_KEY = 'khanan_stats_snapshot_v1';
 const ALERT_HISTORY_KEY = 'khanan_alert_history_v1';
 
+const SCRAPE_MAX_RANGE_DAYS = (() => {
+  const n = Number.parseInt(process.env.NEXT_PUBLIC_SCRAPE_MAX_RANGE_DAYS || '31', 10);
+  return Number.isFinite(n) && n > 0 ? n : 31;
+})();
+const RANGE_CONFIRM_THRESHOLD_DAYS = 7;
+
+function inclusiveDayCount(fromIso: string, toIso: string): number {
+  const a = new Date(`${fromIso}T12:00:00`);
+  const b = new Date(`${toIso}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return Number.NaN;
+  return Math.abs(Math.round((b.getTime() - a.getTime()) / (24 * 60 * 60 * 1000))) + 1;
+}
+
 const CARD_ACCENTS = [
   {
     gradient: 'bg-gradient-to-br from-indigo-500/8 via-transparent to-transparent',
@@ -138,6 +151,8 @@ export default function Home() {
   const [hasSession, setHasSession] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
+  const [rangeScraping, setRangeScraping] = useState(false);
+  const [rangeConfirmOpen, setRangeConfirmOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [filtering, setFiltering] = useState(false);
@@ -155,8 +170,24 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const engineRunning = Boolean(scraperStatus?.running);
+  const rangeDayCount =
+    filters.fromDate && filters.toDate ? inclusiveDayCount(filters.fromDate, filters.toDate) : null;
+  const canRunRange =
+    Boolean(filters.fromDate && filters.toDate) &&
+    rangeDayCount != null &&
+    !Number.isNaN(rangeDayCount) &&
+    rangeDayCount <= SCRAPE_MAX_RANGE_DAYS;
+  const rangeValidationMessage =
+    filters.fromDate && filters.toDate
+      ? rangeDayCount == null || Number.isNaN(rangeDayCount)
+        ? 'Date range invalid'
+        : rangeDayCount > SCRAPE_MAX_RANGE_DAYS
+          ? `Max ${SCRAPE_MAX_RANGE_DAYS} days allowed`
+          : null
+      : null;
   const showErrorChip = Boolean(error);
-  const actionLabel = stopping ? 'Stopping' : refreshing ? 'Refreshing' : scraping ? 'Starting' : engineRunning ? 'Executing' : 'Ready';
+  const actionLabel =
+    stopping ? 'Stopping' : refreshing ? 'Refreshing' : scraping || rangeScraping ? 'Starting' : engineRunning ? 'Executing' : 'Ready';
   const statusLabel = showErrorChip ? 'Error' : engineRunning ? 'Running' : 'Idle';
   const metricsUpdatedAt = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
   const detailsLower = String(scraperStatus?.details || '').toLowerCase();
@@ -166,7 +197,7 @@ export default function Home() {
   if (showErrorChip) {
     runStage = 'Error';
     runProgress = 100;
-  } else if (scraping) {
+  } else if (scraping || rangeScraping) {
     runStage = 'Initializing';
     runProgress = 20;
   } else if (engineRunning) {
@@ -227,8 +258,13 @@ export default function Home() {
   if (error) {
     activityEvents.push({ type: 'error', title: 'Refresh error', detail: error, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
   }
-  if (scraping) {
-    activityEvents.push({ type: 'info', title: 'Initialization started', detail: 'Scraper start request submitted to backend.', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
+  if (scraping || rangeScraping) {
+    activityEvents.push({
+      type: 'info',
+      title: 'Initialization started',
+      detail: 'Scraper start request submitted to backend.',
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    });
   }
   if (engineRunning) {
     activityEvents.push({ type: 'warning', title: 'Scraper executing', detail: scraperStatus?.details || 'Backend reports active scraping run.', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
@@ -237,7 +273,12 @@ export default function Home() {
     activityEvents.push({ type: 'success', title: 'Last run completed', detail: 'Most recent scraping cycle finished successfully.', time: safeFormatTime(lastRunTimestamp) || new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
   }
   if (activityEvents.length === 0) {
-    activityEvents.push({ type: 'info', title: 'System idle', detail: 'No active scraper run. Trigger RUN to start next cycle.', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) });
+    activityEvents.push({
+      type: 'info',
+      title: 'System idle',
+      detail: 'No active scraper run. Use Quick (yesterday) or Range (from filters).',
+      time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+    });
   }
 
   const issueLogs = useMemo(() => {
@@ -429,29 +470,92 @@ export default function Home() {
     void initialize();
   }, []);
 
-  const startScraping = async () => {
-    if (scraping) return;
+  const startQuickYesterdayScrape = async () => {
+    if (scraping || rangeScraping) return;
     const token = localStorage.getItem('spybot_token');
     if (!token) return;
     setScraping(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/selenium/dailyScraping`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = (await response.json().catch(() => ({}))) as { error?: string };
       if (response.ok) {
-        alert('Scraping engine initialized!');
-        pushToast('success', 'Scraper run started.');
+        pushToast('success', 'Quick run started (yesterday).');
         void fetchScraperStatus(token);
+      } else if (response.status === 409) {
+        pushToast('error', typeof data.error === 'string' ? data.error : 'Scraper already running.');
       } else {
         setError('Failed to start scraping engine');
-        pushToast('error', 'Failed to start scraper.');
+        pushToast('error', typeof data.error === 'string' ? data.error : 'Failed to start scraper.');
       }
     } catch (err) {
       console.error('Scraping start error:', err);
       setError('Engine failure during startup');
       pushToast('error', 'Engine failure during startup.');
-      alert('Engine failure during startup');
     } finally {
       setScraping(false);
     }
+  };
+
+  const executeRangeScrape = async () => {
+    if (rangeScraping || scraping) return;
+    const token = localStorage.getItem('spybot_token');
+    if (!token) return;
+    setRangeScraping(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/selenium/scrape-range`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromDate: filters.fromDate,
+          toDate: filters.toDate,
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { error?: string; dayCount?: number };
+      if (response.ok) {
+        const n = data.dayCount;
+        pushToast(
+          'success',
+          typeof n === 'number' ? `Range scrape started (${n} day${n === 1 ? '' : 's'}).` : 'Range scrape started.'
+        );
+        void fetchScraperStatus(token);
+      } else if (response.status === 409) {
+        pushToast('error', typeof data.error === 'string' ? data.error : 'Scraper already running.');
+      } else if (response.status === 400) {
+        pushToast('error', typeof data.error === 'string' ? data.error : 'Invalid range.');
+      } else {
+        pushToast('error', typeof data.error === 'string' ? data.error : `Range scrape failed (${response.status}).`);
+      }
+    } catch (err) {
+      console.error('Range scrape error:', err);
+      pushToast('error', 'Range scrape request failed.');
+    } finally {
+      setRangeScraping(false);
+      setRangeConfirmOpen(false);
+    }
+  };
+
+  const requestRangeScrape = () => {
+    if (!filters.fromDate || !filters.toDate) {
+      pushToast('info', 'Pehle From aur To date select karo.');
+      return;
+    }
+    const dayCount = inclusiveDayCount(filters.fromDate, filters.toDate);
+    if (Number.isNaN(dayCount)) {
+      pushToast('error', 'Invalid date range.');
+      return;
+    }
+    if (dayCount > SCRAPE_MAX_RANGE_DAYS) {
+      pushToast('error', `Range is ${dayCount} days; maximum allowed is ${SCRAPE_MAX_RANGE_DAYS}.`);
+      return;
+    }
+    if (dayCount > RANGE_CONFIRM_THRESHOLD_DAYS) {
+      setRangeConfirmOpen(true);
+      return;
+    }
+    void executeRangeScrape();
   };
 
   const refreshDashboard = async () => {
@@ -474,7 +578,7 @@ export default function Home() {
   };
 
   const stopScraping = async () => {
-    if (!engineRunning || scraping || stopping) return;
+    if (!engineRunning || scraping || rangeScraping || stopping) return;
     setStopping(true);
     try {
       setError('Stop action is not available in current backend. Please wait for the active run to complete.');
@@ -563,6 +667,42 @@ export default function Home() {
         ))}
       </div>
 
+      {rangeConfirmOpen && filters.fromDate && filters.toDate && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/65 px-4 backdrop-blur-[2px]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="range-scrape-confirm-title"
+            className="w-full max-w-md rounded-2xl border border-[#1f2937] bg-[#0b0f16] p-6 shadow-2xl"
+          >
+            <h3 id="range-scrape-confirm-title" className="text-lg font-semibold text-white">
+              Confirm range scrape
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-slate-400">
+              This will run up to{' '}
+              <span className="font-semibold text-slate-200">{inclusiveDayCount(filters.fromDate, filters.toDate)}</span> calendar{' '}
+              {inclusiveDayCount(filters.fromDate, filters.toDate) === 1 ? 'day' : 'days'} of scraping ({filters.fromDate} → {filters.toDate}).
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRangeConfirmOpen(false)}
+                className="rounded-xl border border-slate-600/60 bg-slate-800/40 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700/50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void executeRangeScrape()}
+                className="rounded-xl border border-amber-500/50 bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30"
+              >
+                Run range
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Error Banner ── */}
       {error && (
         <section className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 md:p-5">
@@ -630,7 +770,9 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-white">Quick Filters</h3>
-                <p className="text-xs text-slate-500">Filter metrics and preview records by date/district/mineral.</p>
+                <p className="text-xs text-slate-500">
+                  Filter metrics and preview records by date/district/mineral. <span className="text-slate-600">Range scrape (Actions) uses From / To.</span>
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => applyQuickRange(0)} className="rounded-lg border border-slate-600/50 bg-slate-700/20 px-3 py-1.5 text-xs text-slate-200 transition hover:bg-slate-700/35 hover:text-white">Today</button>
@@ -790,7 +932,9 @@ export default function Home() {
           <section className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-white">Actions</h2>
-              <p className="text-sm text-slate-500">Start updates, refresh data, and track current progress.</p>
+              <p className="text-sm text-slate-500">
+                Start updates, refresh data, and track current progress. Leads page uses vehicle summaries; run Leads Sync Vehicles after scrape.
+              </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
                 {/* Status chip */}
                 <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${
@@ -888,7 +1032,7 @@ export default function Home() {
                           className={`h-full rounded-full transition-all duration-700 ${
                             showErrorChip
                               ? 'bg-red-500'
-                              : engineRunning || scraping
+                              : engineRunning || scraping || rangeScraping
                                 ? 'animate-bar-shimmer'
                                 : runProgress === 100
                                   ? 'bg-green-600'
@@ -902,28 +1046,45 @@ export default function Home() {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="w-full max-w-xs rounded-2xl border border-[#1f2937] bg-[#060a12]/80 p-2">
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {/* RUN */}
+                  <div className="w-full max-w-md rounded-2xl border border-[#1f2937] bg-[#060a12]/80 p-2">
+                    <div className="grid grid-cols-2 gap-1.5">
                       <button
-                        onClick={startScraping}
-                        disabled={scraping || engineRunning || refreshing || stopping}
-                        className={`relative inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all active:scale-95 ${
-                          scraping || engineRunning || refreshing || stopping
+                        type="button"
+                        title="Scrape yesterday only"
+                        onClick={() => void startQuickYesterdayScrape()}
+                        disabled={scraping || rangeScraping || engineRunning || refreshing || stopping}
+                        className={`relative inline-flex flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all active:scale-95 sm:flex-row sm:gap-2 sm:px-4 sm:py-3 sm:text-sm ${
+                          scraping || rangeScraping || engineRunning || refreshing || stopping
                             ? 'border border-slate-800 bg-slate-900 text-slate-700'
                             : 'animate-pulse-indigo border border-indigo-500/50 bg-indigo-500/20 text-indigo-100 hover:bg-indigo-500/30 hover:border-indigo-400/70'
                         }`}
                       >
-                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                        {scraping ? 'INIT...' : 'RUN'}
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+                        <span>{scraping ? '…' : 'RUN'}</span>
+                        <span className="text-[10px] font-normal text-indigo-200/80 sm:hidden">yesterday</span>
                       </button>
 
-                      {/* REFRESH */}
                       <button
-                        onClick={refreshDashboard}
-                        disabled={refreshing || scraping || stopping}
+                        type="button"
+                        title="Use From / To filters above"
+                        onClick={() => requestRangeScrape()}
+                        disabled={scraping || rangeScraping || engineRunning || refreshing || stopping || !canRunRange}
+                        className={`inline-flex flex-col items-center justify-center gap-0.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition-all active:scale-95 sm:flex-row sm:gap-2 sm:px-4 sm:py-3 sm:text-sm ${
+                          scraping || rangeScraping || engineRunning || refreshing || stopping || !canRunRange
+                            ? 'border-slate-700 bg-slate-900 text-slate-600'
+                            : 'border-amber-500/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25 hover:border-amber-400/60'
+                        }`}
+                      >
+                        <span>{rangeScraping ? '…' : 'Range'}</span>
+                        <span className="text-[10px] font-normal text-amber-200/70 sm:hidden">from filters</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void refreshDashboard()}
+                        disabled={refreshing || scraping || rangeScraping || stopping}
                         className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-all active:scale-95 ${
-                          refreshing || scraping || stopping
+                          refreshing || scraping || rangeScraping || stopping
                             ? 'border-slate-700 bg-slate-900 text-slate-600'
                             : 'border-slate-500/50 bg-slate-700/25 text-slate-100 hover:bg-slate-700/40 hover:border-slate-400/60'
                         }`}
@@ -934,12 +1095,12 @@ export default function Home() {
                         {refreshing ? '...' : 'SYNC'}
                       </button>
 
-                      {/* STOP */}
                       <button
-                        onClick={stopScraping}
-                        disabled={!engineRunning || scraping || refreshing || stopping}
+                        type="button"
+                        onClick={() => void stopScraping()}
+                        disabled={!engineRunning || scraping || rangeScraping || refreshing || stopping}
                         className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition-all active:scale-95 ${
-                          !engineRunning || scraping || refreshing || stopping
+                          !engineRunning || scraping || rangeScraping || refreshing || stopping
                             ? 'border-slate-700 bg-slate-900 text-slate-700'
                             : 'border-red-500/50 bg-red-500/20 text-red-100 hover:bg-red-500/30 hover:border-red-400/70'
                         }`}
@@ -950,6 +1111,9 @@ export default function Home() {
                         {stopping ? '...' : 'STOP'}
                       </button>
                     </div>
+                    {rangeValidationMessage && (
+                      <p className="mt-2 px-1 text-[11px] text-slate-500">{rangeValidationMessage}</p>
+                    )}
                   </div>
                 </div>
               </div>
