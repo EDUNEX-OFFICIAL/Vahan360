@@ -5,6 +5,8 @@ class PuppeteerService {
   constructor() {
     this.runStateId = 'khanan-scraper';
     this.isProcessing = false;
+    /** Set true via requestStop(); loops check this to exit gracefully. */
+    this.scrapeStopRequested = false;
     this.isVehicleSummarySyncRunning = false;
     this.currentStatusMessage = 'IDLE';
     this.hasWarnedMissingRunStateDelegate = false;
@@ -37,8 +39,26 @@ class PuppeteerService {
     return this.isProcessing;
   }
 
+  shouldStopScrape() {
+    return Boolean(this.scrapeStopRequested);
+  }
+
+  /** Ask the current live/local scrape to stop after the current step. */
+  requestStop() {
+    if (!this.isProcessing) return false;
+    this.scrapeStopRequested = true;
+    this.currentStatusMessage = 'STOPPING: will exit after current step…';
+    return true;
+  }
+
   getStatusMessage() {
     return this.currentStatusMessage;
+  }
+
+  /** In-memory progress while a scrape is active (for /api/selenium/status). */
+  getLiveRunStats() {
+    if (!this.isProcessing || !this.currentRunStats) return null;
+    return { ...this.currentRunStats };
   }
 
   async getRunSummary() {
@@ -214,7 +234,7 @@ class PuppeteerService {
   async launchBrowser() {
     return await puppeteer.launch({
       headless: 'new',
-      protocolTimeout: 60000,
+      protocolTimeout: 180000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -274,13 +294,19 @@ class PuppeteerService {
 
     if (this.isLocalMode(url)) {
       try {
+        this.scrapeStopRequested = false;
         this.isProcessing = true;
         await this.startRun('local', fromDate, toDate);
         await this.runLocalScraping(fromDate, toDate);
-        await this.maybeAutoSyncVehicleSummaries('local');
-        await this.endRun(true);
+        if (this.scrapeStopRequested) {
+          await this.endRun(false, 'Stopped by user');
+        } else {
+          await this.maybeAutoSyncVehicleSummaries('local');
+          await this.endRun(true);
+        }
       } finally {
         this.isProcessing = false;
+        this.scrapeStopRequested = false;
         this.currentStatusMessage = 'IDLE - Last local run completed at ' + new Date().toISOString();
       }
       return;
@@ -290,6 +316,7 @@ class PuppeteerService {
     let lastResetTime = new Date();
 
     try {
+      this.scrapeStopRequested = false;
       this.isProcessing = true;
       await this.startRun('live', fromDate, toDate);
       browser = await this.launchBrowser();
@@ -300,6 +327,7 @@ class PuppeteerService {
 
       while (step > 0 ? currentDate <= endDate : currentDate >= endDate) {
         if (process.killed) break;
+        if (this.shouldStopScrape()) break;
 
         this.currentStatusMessage = `RUNNING: Processing date ${this.formatDate(currentDate)}`;
 
@@ -314,12 +342,18 @@ class PuppeteerService {
         await this.processDateIteration(browser, url, dateSelector, currentDate, showButtonSelector);
         currentDate.setDate(currentDate.getDate() + step);
       }
-      await this.maybeAutoSyncVehicleSummaries('live');
+      if (this.shouldStopScrape()) {
+        this.currentStatusMessage = 'STOPPED: scrape cancelled by user';
+        await this.endRun(false, 'Stopped by user');
+      } else {
+        await this.maybeAutoSyncVehicleSummaries('live');
+      }
     } catch (error) {
       console.error('Critical Failure in Scraper:', error);
       await this.endRun(false, error.message);
     } finally {
       this.isProcessing = false;
+      this.scrapeStopRequested = false;
       if (!this.lastRunSummary || this.lastRunSummary.startedAt !== this.currentRunStats?.startedAt) {
         await this.endRun(true);
       }
@@ -385,6 +419,7 @@ class PuppeteerService {
 
     while ((startDate <= endDate && current <= endDate) ||
            (startDate > endDate && current >= endDate)) {
+      if (this.shouldStopScrape()) break;
 
       this.currentStatusMessage = `RUNNING LOCAL: Seeding date ${this.formatDate(current)}`;
       const formattedDate = this.formatDate(current);
@@ -438,6 +473,7 @@ class PuppeteerService {
   }
 
   async processDateIteration(browser, url, dateSelector, currentDate, showButtonSelector) {
+    if (this.shouldStopScrape()) return;
     const page = await browser.newPage();
     const formattedDate = this.formatDate(currentDate);
     page.setDefaultTimeout(30000);
@@ -449,6 +485,7 @@ class PuppeteerService {
 
       const anchors = await this.extractTableData(page, this.tableIndex);
       for (const anchorUrl of Object.values(anchors)) {
+        if (this.shouldStopScrape()) break;
         await this.processSecondLayer(browser, anchorUrl);
       }
     } catch (error) {
@@ -463,6 +500,7 @@ class PuppeteerService {
   }
 
   async processSecondLayer(browser, url) {
+    if (this.shouldStopScrape()) return;
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(45000);
@@ -475,6 +513,7 @@ class PuppeteerService {
       const anchors = await this.extractTableData(page, this.tableIndex);
 
       for (const nextUrl of Object.values(anchors)) {
+        if (this.shouldStopScrape()) break;
         await this.processThirdLayer(browser, nextUrl, sourceType);
       }
     } catch (error) {
@@ -485,6 +524,7 @@ class PuppeteerService {
   }
 
   async processThirdLayer(browser, url, sourceType) {
+    if (this.shouldStopScrape()) return;
     const page = await browser.newPage();
     page.setDefaultTimeout(30000);
     page.setDefaultNavigationTimeout(45000);
@@ -495,6 +535,7 @@ class PuppeteerService {
 
       const anchors = await this.extractTableData(page, this.tableIndex);
       for (const nextUrl of Object.values(anchors)) {
+        if (this.shouldStopScrape()) break;
         await this.processFourthLayer(browser, nextUrl, sourceType);
       }
     } catch (error) {
@@ -505,9 +546,11 @@ class PuppeteerService {
   }
 
   async processFourthLayer(browser, url, sourceType) {
+    if (this.shouldStopScrape()) return;
     const maxRetries = 2;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (this.shouldStopScrape()) return;
       const page = await browser.newPage();
       page.setDefaultTimeout(30000);
       page.setDefaultNavigationTimeout(45000);
@@ -530,6 +573,7 @@ class PuppeteerService {
         const pageBatch = [];
 
         for (let i = 1; i < rows.length - 1; i++) {
+          if (this.shouldStopScrape()) break;
           try {
             const row = rows[i];
             const cols = await row.$$('td');
@@ -736,7 +780,7 @@ class PuppeteerService {
 
   async insertKhananBatch(batch) {
     if (!batch.length) return 0;
-    const rows = batch.map((doc) => {
+    const mapped = batch.map((doc) => {
       const d = doc.toObject ? doc.toObject() : doc;
       return {
         district: d.district,
@@ -744,7 +788,7 @@ class PuppeteerService {
         date: d.date,
         sourceType: d.sourceType,
         consigneeName: d.consigneeName,
-        challanNo: d.challanNo,
+        challanNo: String(d.challanNo ?? '').trim(),
         mineralName: d.mineralName,
         mineralCategory: d.mineralCategory,
         vehicleRegNo: d.vehicleRegNo,
@@ -755,6 +799,14 @@ class PuppeteerService {
         checkStatus: d.checkStatus ?? 'Pending',
       };
     });
+    const seenChallan = new Set();
+    const rows = mapped.filter((r) => {
+      if (!r.challanNo) return false;
+      if (seenChallan.has(r.challanNo)) return false;
+      seenChallan.add(r.challanNo);
+      return true;
+    });
+    if (!rows.length) return 0;
 
     try {
       const result = await prisma.khananData.createMany({
@@ -781,13 +833,12 @@ class PuppeteerService {
       return false;
     }
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = this.formatDate(yesterday);
+    const today = new Date();
+    const dateStr = this.formatDate(today);
     const dateSelector = '#ctl00_MainContent_txtDate1';
 
     try {
-      console.log(`Manual scraping triggered for date ${dateStr}`);
+      console.log(`Manual scraping triggered for today ${dateStr}`);
       await this.scheduledScrapingTask(
         process.env.SCRAPING_URL || 'https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx',
         dateSelector,

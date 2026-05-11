@@ -198,6 +198,69 @@ router.get('/districts', async (req, res) => {
   }
 });
 
+const WIPE_SCRAPE_CONFIRM = 'WIPE_KHANAN_SCRAPE_DATA';
+
+// GET /api/khanan/record/:id — one row (for layer-by-layer QA after scrape)
+router.get('/record/:id', async (req, res) => {
+  try {
+    const raw = String(req.params.id || '').trim();
+    if (!/^\d+$/.test(raw)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+    const id = BigInt(raw);
+    const row = await prisma.khananData.findUnique({ where: { id } });
+    if (!row) {
+      return res.status(404).json({ error: 'Record not found' });
+    }
+    res.json({ record: serializeKhananRow(row) });
+  } catch (error) {
+    console.error('Error fetching khanan record:', error);
+    res.status(500).json({ error: 'Failed to fetch record', details: error.message });
+  }
+});
+
+// POST /api/khanan/wipe-scraped-data — delete all scraped Khanan rows (and optional vehicle summaries)
+router.post('/wipe-scraped-data', async (req, res) => {
+  try {
+    const puppeteerService = require('../services/puppeteerService');
+    if (puppeteerService.isCurrentlyRunning()) {
+      return res.status(409).json({
+        error: 'Scraper is running. Stop scrape first, then wipe.',
+      });
+    }
+
+    const { confirm, wipeVehicleSummaries } = req.body || {};
+    if (confirm !== WIPE_SCRAPE_CONFIRM) {
+      return res.status(400).json({
+        error: 'Confirmation required',
+        expectedBody: {
+          confirm: WIPE_SCRAPE_CONFIRM,
+          wipeVehicleSummaries: false,
+        },
+        note: 'Set wipeVehicleSummaries true only if you also want all Vehicle Leads summaries removed.',
+      });
+    }
+
+    const khananResult = await prisma.khananData.deleteMany({});
+    const scraperStateResult = await prisma.scraperRunState.deleteMany({ where: { id: 'khanan-scraper' } });
+
+    let vehicleResult = { count: 0 };
+    if (wipeVehicleSummaries === true || wipeVehicleSummaries === 'true') {
+      vehicleResult = await prisma.vehicleTripSummary.deleteMany({});
+    }
+
+    res.json({
+      ok: true,
+      deletedKhananRows: khananResult.count,
+      scraperRunStateRowsDeleted: scraperStateResult.count,
+      deletedVehicleSummaries: vehicleResult.count,
+    });
+  } catch (error) {
+    console.error('Error wiping khanan data:', error);
+    res.status(500).json({ error: 'Wipe failed', details: error.message });
+  }
+});
+
 // GET /api/khanan/minerals - Get unique minerals
 router.get('/minerals', async (req, res) => {
   try {
