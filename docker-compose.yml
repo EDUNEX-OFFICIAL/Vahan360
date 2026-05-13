@@ -28,8 +28,9 @@ services:
     image: postgres:15-alpine
     container_name: vahan360-postgres
     restart: unless-stopped
+    # Host 15432: avoid clash when Windows PostgreSQL already uses 5432/5433 (common dev setup).
     ports:
-      - "5432:5432"
+      - "15432:5432"
     environment:
       POSTGRES_USER: ${V360_POSTGRES_USER:-vahan360}
       POSTGRES_PASSWORD: ${V360_POSTGRES_PASSWORD:-pass123}

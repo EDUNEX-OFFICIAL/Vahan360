@@ -6,7 +6,11 @@
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "db:push": "pnpm --filter spybot-backend exec prisma db push",
+    "sync:user": "pnpm --filter spybot-backend run sync:user",
+    "seed:sample": "pnpm --filter spybot-backend run prisma:seed:sample",
+    "db:counts": "pnpm --filter spybot-backend run db:counts"
   },
   "devDependencies": {
     "turbo": "^1.13.4"

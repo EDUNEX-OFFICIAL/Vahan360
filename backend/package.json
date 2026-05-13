@@ -4,8 +4,10 @@
   "description": "Backend API for Spybot - Khanan and Vehicle data scraping",
   "main": "src/app.js",
   "scripts": {
+    "build": "prisma generate",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
+    "db:counts": "node scripts/print-db-counts.js",
     "sync:user": "node scripts/sync-local-user.js",
     "jwt:secret": "node scripts/generate-jwt-secret.js",
     "prisma:generate": "prisma generate",
