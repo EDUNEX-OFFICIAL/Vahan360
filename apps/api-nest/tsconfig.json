@@ -1,0 +1,25 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "paths": {
+      "@vahan360/db/ingest-client": [
+        "../../packages/db/src/createIngestPrismaClient"
+      ],
+      "@vahan360/db/ingest-client-readonly": [
+        "../../packages/db/src/createIngestReadonlyPrismaClient"
+      ]
+    },
+    "incremental": true
+  }
+}

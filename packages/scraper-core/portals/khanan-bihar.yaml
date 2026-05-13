@@ -1,0 +1,40 @@
+# Selector registry for the Khanan (Bihar mining) citizen portal.
+# `version` MUST be bumped whenever a selector below changes — workers log it
+# alongside every job event so we can correlate regressions with portal HTML.
+
+portalId: khanan-bihar
+version: "v1.0.0"
+lastUpdated: "2026-05-14"
+baseUrl: https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx
+description: |
+  Day-range ePass report for all districts. Single date input + Show button
+  produces a paginated table of mineral movement records.
+
+pages:
+  default:
+    fields:
+      dateInput:
+        critical: true
+        selectors:
+          - "#ctl00_MainContent_txtDate1"
+          - "input[id*='txtDate1']"
+      showButton:
+        critical: true
+        selectors:
+          - "#ctl00_MainContent_btnshow"
+          - "input[id*='btnshow']"
+      resultsTable:
+        critical: true
+        selectors:
+          - "#ctl00_MainContent_GridView1"
+        fallbackSelectors:
+          - "table[id*='GridView1']"
+      resultsRow:
+        selectors:
+          - "#ctl00_MainContent_GridView1 tr"
+          - "table[id*='GridView1'] tr"
+      pagerNext:
+        selectors:
+          - "#ctl00_MainContent_GridView1 td.pager a[href*='Page$Next']"
+        fallbackSelectors:
+          - "td.pager a[href*='Page$Next']"

@@ -1,0 +1,24 @@
+# Selector registry placeholder for the Vahan/Parivahan permit lookup portal.
+# Real selectors will land when vehicle_permit_snapshot scraping is wired up.
+
+portalId: vahan-permit
+version: "v0.0.1"
+lastUpdated: "2026-05-14"
+baseUrl: https://vahan.parivahan.gov.in/vahan/vahan/ui/statevalidation/homepage.xhtml
+description: |
+  Vahan citizen homepage. Used for vehicle permit + insurance snapshots.
+
+pages:
+  default:
+    fields:
+      regNoInput:
+        critical: true
+        selectors:
+          - "input[id*='regn_no1_exact']"
+          - "input[name*='regn_no1_exact']"
+      submitButton:
+        critical: true
+        selectors:
+          - "button[id*='btn_submit']"
+        fallbackSelectors:
+          - "input[id*='btn_submit']"

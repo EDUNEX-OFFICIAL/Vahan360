@@ -1,0 +1,54 @@
+{{- /*
+  KEDA Redis list scaler for optional dedicated retry worker (INGEST_RETRY_QUEUE_NAME).
+*/ -}}
+{{- if and .Values.keda.enabled .Values.workerRetry.enabled .Values.keda.workerRetry.enabled }}
+{{- $addr := .Values.keda.redis.address }}
+{{- if not $addr }}
+  {{- if .Values.redis.enabled }}
+    {{- $addr = printf "%s-redis-master.%s.svc.cluster.local:6379" .Release.Name .Release.Namespace }}
+  {{- else }}
+    {{- fail "keda.enabled: set keda.redis.address to host:port for external Redis, or enable chart redis.enabled" }}
+  {{- end }}
+{{- end }}
+{{- $q := default (index .Values.config "INGEST_RETRY_QUEUE_NAME") "scrape-ingest-retry" }}
+{{- if .Values.keda.workerRetry.queueName }}
+  {{- $q = .Values.keda.workerRetry.queueName }}
+{{- end }}
+{{- $listName := printf "bull:%s:wait" $q }}
+{{- $authName := printf "%s-keda-redis" (include "vahan360.fullname" .) }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker-retry-so
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-retry
+  annotations:
+    vahan360.dev/scaler: "redis"
+    vahan360.dev/redis-list: {{ $listName | quote }}
+spec:
+  scaleTargetRef:
+    name: {{ include "vahan360.fullname" . }}-worker-retry
+  minReplicaCount: {{ .Values.keda.workerRetry.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.workerRetry.maxReplicas }}
+  pollingInterval: {{ .Values.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.keda.cooldownPeriod }}
+  {{- if .Values.keda.restoreToOriginalReplicaCount }}
+  restoreToOriginalReplicaCount: true
+  {{- end }}
+  triggers:
+    - type: redis
+      metadata:
+        address: {{ $addr | quote }}
+        listName: {{ $listName | quote }}
+        listLength: {{ .Values.keda.workerRetry.listLength | quote }}
+        activationListLength: {{ .Values.keda.workerRetry.activationListLength | quote }}
+        enableTLS: {{ .Values.keda.redis.enableTLS | default "false" | quote }}
+        {{- if .Values.keda.redis.username }}
+        username: {{ .Values.keda.redis.username | quote }}
+        {{- end }}
+      {{- if and .Values.keda.redis.passwordSecretName .Values.keda.redis.passwordSecretKey }}
+      authenticationRef:
+        name: {{ $authName }}
+      {{- end }}
+{{- end }}

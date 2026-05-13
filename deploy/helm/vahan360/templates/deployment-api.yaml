@@ -1,0 +1,104 @@
+{{- if .Values.api.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vahan360.fullname" . }}-api
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "vahan360.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      {{- with .Values.api.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.api.terminationGracePeriodSeconds | default 45 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.api.image.repository }}:{{ .Values.api.image.tag }}"
+          imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "vahan360.fullname" . }}-config
+            - secretRef:
+                name: {{ include "vahan360.secretName" . }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ include "vahan360.dbUrlSecretKey" . }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.jwtSecret }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.otelHeaders }}
+                  optional: true
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: {{ include "vahan360.redisUrl" . | quote }}
+            - name: BULLMQ_REDIS_URL
+              value: {{ include "vahan360.redisUrl" . | quote }}
+            {{- else }}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+                  optional: true
+            - name: BULLMQ_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+                  optional: true
+            {{- end }}
+            - name: NEST_API_PORT
+              value: {{ .Values.api.service.port | quote }}
+            {{- if .Values.secrets.keys.ingestDatabaseUrlRead }}
+            - name: INGEST_DATABASE_URL_READ_REPLICA
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.ingestDatabaseUrlRead }}
+                  optional: true
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          {{- with .Values.api.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

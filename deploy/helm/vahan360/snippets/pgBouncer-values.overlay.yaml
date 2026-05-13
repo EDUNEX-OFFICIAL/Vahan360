@@ -1,0 +1,5 @@
+# Merge with `-f snippets/pgBouncer-values.overlay.yaml` (or paste into prod values).
+# Prerequisites: Kubernetes Secret contains BOTH a direct Postgres URL (`DATABASE_URL`) for migrations /
+# DDL and a pooler-scoped URL under `DATABASE_URL_PGBOUNCER` Prisma-tested with ?pgbouncer=true as needed.
+
+databaseUrlSource: pgbouncer

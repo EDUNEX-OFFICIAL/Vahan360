@@ -1,0 +1,39 @@
+# Vahan360 — ingest / queue alerting (sample)
+#
+# Metrics referenced here are defined in-repo:
+#   - backend:        apps/api-express/src/lib/metrics.js  (scrape_jobs_*)
+#   - worker-ingest:  apps/worker-ingest/src/lib/workerMetrics.js (ingest_*, playwright_*, …)
+#
+# Default sample scrape config (deploy/prometheus/prometheus.yml) only targets the backend /metrics.
+# Worker counters/histograms appear only when the worker is scraped (e.g. add a job_name for WORKER_METRICS_PORT).
+# After you extend scrape_configs, recording rule selectors (job, service, instance labels) may need tuning.
+
+groups:
+  - name: vahan360_ingest
+    interval: 30s
+    rules:
+      # Recording — convenience for dashboards/alerts; drops to empty if metric absent.
+      - record: job:vahan360:scrape_jobs_queued_gauge
+        expr: scrape_jobs_status{status="queued"}
+
+      - alert: Vahan360ScrapeJobsQueuedBacklogHigh
+        expr: scrape_jobs_status{status="queued"} > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Scrape job queue depth (queued) is elevated
+          description: >
+            `scrape_jobs_status{status="queued"}` exceeded 500 for 5m. Confirm workers are running
+            and DB/Redis are healthy. Threshold is conservative — adjust for your fleet size.
+
+      - alert: Vahan360IngestRetryReplayGuardedSustained
+        expr: sum(rate(ingest_retry_replay_guarded_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Retry-queue jobs are being skipped (replay guard)
+          description: >
+            `ingest_retry_replay_guarded_total` rate > 0.01/s for 5m — jobs exceeded INGEST_RETRY_MAX_REPLAY_ATTEMPTS.
+            Requires worker /metrics scrape. Tune threshold once you know baseline traffic.

@@ -1,0 +1,12 @@
+groups:
+  - name: vahan360-prometheus-scrape
+    rules:
+      # Fires when a configured scrape job has been unreachable for several minutes (local stacks: ensure targets + METRICS_ENABLED line up).
+      - alert: PrometheusScrapeTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scrape target down (job={{ $labels.job }} instance={{ $labels.instance }})"
+          description: "Prometheus could not scrape this target. Check exporter process, METRICS_ENABLED, firewall, or docker network aliases (use `alertmanager:9093` from the observability compose network)."

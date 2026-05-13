@@ -6,9 +6,10 @@ node_modules/
 .pnpm-store/
 .npmrc
 pnpm-debug.log*
-frontend/package-lock.json
+package-lock.json
+**/package-lock.json
 
-# Turborepo
+# Turborepo / Next / TS build outputs
 .turbo/
 **/.turbo/
 .next/
@@ -17,6 +18,16 @@ dist/
 **/dist/
 .cache/
 **/.cache/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Test / coverage / Playwright artifacts
+coverage/
+**/coverage/
+playwright-report/
+**/playwright-report/
+test-results/
+**/test-results/
 
 # Environment files
 .env
@@ -44,8 +55,8 @@ secrets/
 *.secret
 
 # AI/agent docs not for repo
-frontend/AGENTS.md
-frontend/CLAUDE.md
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
 
 # OS
 .DS_Store

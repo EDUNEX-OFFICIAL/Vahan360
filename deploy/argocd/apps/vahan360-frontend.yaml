@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vahan360-frontend
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/EDUNEX-OFFICIAL/Vahan360.git
+    targetRevision: main
+    path: deploy/helm/vahan360
+    helm:
+      valueFiles:
+        - ../../argocd/values/frontend.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vahan360-frontend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,137 @@
+{{- if .Values.browserManager.enabled -}}
+{{- /*
+  Browser-manager deployment.
+
+  Runs `src/browserManagerServer.js`:
+    - GET  /  /health  (unauthenticated — probes)
+    - POST /v1/context/acquire  { "portalId": "..." }  + auth + X-Tenant-Id / JWT tenant
+    - POST /v1/context/:leaseId/release
+    Acquire returns `wsEndpoint` for Playwright `connectOverCDP` on workers (see `browserManagerClient.js`).
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vahan360.fullname" . }}-browser-manager
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-manager
+spec:
+  replicas: {{ .Values.browserManager.replicaCount | default 1 }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: browser-manager
+  template:
+    metadata:
+      labels:
+        {{- include "vahan360.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: browser-manager
+      {{- with .Values.browserManager.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.browserManager.terminationGracePeriodSeconds | default 90 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: browser-manager
+          {{- /* Default to reusing the worker image; allow override via browserManager.image.repository/tag. */ -}}
+          {{- $img := .Values.browserManager.image | default dict -}}
+          {{- $repo := default .Values.worker.image.repository $img.repository -}}
+          {{- $tag := default .Values.worker.image.tag $img.tag -}}
+          {{- $pullPolicy := default .Values.worker.image.pullPolicy $img.pullPolicy }}
+          image: "{{ $repo }}:{{ $tag }}"
+          imagePullPolicy: {{ $pullPolicy }}
+          {{- with .Values.browserManager.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.browserManager.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.browserManager.service.targetPort | default 3005 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "vahan360.fullname" . }}-config
+            - secretRef:
+                name: {{ include "vahan360.secretName" . }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ include "vahan360.dbUrlSecretKey" . }}
+                  optional: true
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+                  optional: true
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.otelHeaders }}
+                  optional: true
+            {{- if .Values.secrets.keys.browserManagerToken }}
+            - name: BROWSER_MANAGER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.browserManagerToken }}
+                  optional: true
+            {{- end }}
+            {{- range $key, $value := .Values.browserManager.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep {{ .Values.browserManager.lifecycle.preStopSleepSeconds | default 30 }}"]
+          {{- with .Values.browserManager.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.browserManager.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.browserManager.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- if .Values.browserManager.service.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vahan360.fullname" . }}-browser-manager
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-manager
+spec:
+  type: {{ .Values.browserManager.service.type | default "ClusterIP" }}
+  {{- if .Values.browserManager.service.sessionAffinityEnabled }}
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  {{- end }}
+  selector:
+    {{- include "vahan360.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-manager
+  ports:
+    - name: http
+      port: {{ .Values.browserManager.service.port | default 3005 }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- end }}

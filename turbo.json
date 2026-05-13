@@ -3,10 +3,14 @@
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**", "build/**"]
+      "outputs": [".next/**", "dist/**", "build/**", "src/generated/**"]
     },
     "dev": {
       "cache": false
+    },
+    "start": {
+      "cache": false,
+      "dependsOn": ["build"]
     },
     "lint": {},
     "test": {}

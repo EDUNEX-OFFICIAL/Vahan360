@@ -1,0 +1,21 @@
+{
+  "name": "@vahan360/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared scrape job and job-event contract types for Vahan360 services.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

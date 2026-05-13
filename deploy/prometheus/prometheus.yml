@@ -1,0 +1,39 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - host.docker.internal:9093
+            - alertmanager:9093
+
+rule_files:
+  - rules/vahan360-ingest.rules.yml
+  - rules/prometheus-scrape-health.rules.yml
+
+scrape_configs:
+  - job_name: vahan360-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          # Docker Desktop (Windows/macOS): host gateway for the API container / host process.
+          - host.docker.internal:5000
+        labels:
+          service: vahan360-api-express
+    # Scrape only when METRICS_ENABLED=true on the backend; otherwise expect HTTP 404 and mute alerts in Grafana.
+  - job_name: worker-ingest
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          # Docker Desktop (Windows/macOS): host gateway for worker-ingest on WORKER_METRICS_PORT (default 9101).
+          - host.docker.internal:9101
+          # Linux / bare metal on same host: uncomment and use instead of host.docker.internal if needed:
+          # - 127.0.0.1:9101
+        labels:
+          service: worker-ingest
+    # Scrape only when METRICS_ENABLED=true on worker-ingest; otherwise expect HTTP 404 — see README observability.
+  - job_name: prometheus-self
+    static_configs:
+      - targets: ["localhost:9090"]

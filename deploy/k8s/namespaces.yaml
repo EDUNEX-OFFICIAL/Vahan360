@@ -1,0 +1,11 @@
+# Suggested namespace for Vahan360 workloads (Helm `--namespace vahan360`).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vahan360
+  labels:
+    app.kubernetes.io/name: vahan360
+    app.kubernetes.io/part-of: vahan360
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,464 @@
+# Default images are placeholders — build/push from this repo and override per environment.
+global:
+  imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Mount pooled Postgres URL for Prisma workloads: create Secret key `DATABASE_URL_PGBOUNCER` alongside direct `DATABASE_URL`
+# then set `databaseUrlSource: pgbouncer`. See `snippets/pgBouncer-values.overlay.yaml`.
+databaseUrlSource: direct
+
+secrets:
+  # Secret provisioning options (pick one per cluster):
+  #
+  # A) Sealed Secrets (Bitnami) — commit encrypted SealedSecret, controller
+  #    decrypts to a plain Secret. Example in deploy/k8s/sealed-secrets/.
+  #    Set existingSecret to the Secret name produced by the controller.
+  #
+  # B) Vault Agent Sidecar — annotate pods so the Vault agent injects a
+  #    Kubernetes Secret. Add these to api.podAnnotations / worker.podAnnotations:
+  #      vault.hashicorp.com/agent-inject: "true"
+  #      vault.hashicorp.com/role: "vahan360"
+  #      vault.hashicorp.com/agent-inject-secret-db: "secret/vahan360/db"
+  #      vault.hashicorp.com/agent-inject-template-db: |
+  #        {{- with secret "secret/vahan360/db" -}}
+  #        DATABASE_URL={{ .Data.data.url }}
+  #        {{- end }}
+  #    Then point existingSecret at the Secret the agent renders, or use
+  #    `envFrom` with the projected volume directly.
+  #
+  # C) External Secrets Operator — see `deploy/k8s/sealed-secrets/external-secret.placeholder.yaml`
+  #    for a stub `ExternalSecret`; wire `secrets.existingSecret` to the generated Secret name.
+  #
+  # When empty, defaults to "<release-fullname>-secrets".
+  existingSecret: ""
+  keys:
+    databaseUrl: DATABASE_URL
+    # Used when databaseUrlSource: pgbouncer (Helm mounts this key into env name DATABASE_URL above).
+    databasePgbouncer: DATABASE_URL_PGBOUNCER
+    ingestDatabaseUrl: INGEST_DATABASE_URL
+    # Optional read-replica. When set, Nest analytics services route SELECT
+    # queries to the replica via `createIngestReadonlyPrismaClient`.
+    # Leave empty (default) to use the primary for all reads.
+    ingestDatabaseUrlRead: INGEST_DATABASE_URL_READ_REPLICA
+    redisUrl: REDIS_URL
+    jwtSecret: JWT_SECRET
+    otelHeaders: OTEL_EXPORTER_OTLP_HEADERS
+    browserManagerToken: BROWSER_MANAGER_TOKEN
+
+workloads:
+  profile: all
+
+# Optional embedded Redis (Bitnami). Keep disabled in production; point api/worker at managed Redis.
+redis:
+  enabled: false
+  architecture: standalone
+  auth:
+    enabled: false
+
+web:
+  enabled: true
+  replicaCount: 2
+  nextPublicApiBaseUrl: "https://vahan360.example.com"
+  image:
+    repository: ghcr.io/example/vahan360-web
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+  podAnnotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 15
+    timeoutSeconds: 2
+  readinessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/example/vahan360-api-nest
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3001
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "3001"
+  terminationGracePeriodSeconds: 45
+  resources:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 15
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+worker:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/vahan360-worker-ingest
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    port: 5555
+    targetPort: noop
+  podAnnotations: {}
+  terminationGracePeriodSeconds: 75
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  livenessProbe:
+    exec:
+      command: ["node", "-e", "process.exit(0)"]
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 3
+  readinessProbe:
+    exec:
+      command: ["node", "-e", "process.exit(0)"]
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+  lifecycle:
+    preStopSleepSeconds: 20
+
+browserManager:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+    pullPolicy: ""
+  command:
+    - node
+    - src/browserManagerServer.js
+  args: []
+  env: {}
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 3005
+    targetPort: 3005
+    ## When replicas > 1, browser-manager leases are in-memory per replica. Prefer replicaCount 1 OR set true so NodePort/LoadBalancer/Ingress LB uses ClientIP stickiness toward one pod (best-effort; not Redis-coordinated yet).
+    sessionAffinityEnabled: false
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "3005"
+  terminationGracePeriodSeconds: 90
+  resources:
+    requests:
+      cpu: 300m
+      memory: 768Mi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 8
+    periodSeconds: 10
+    timeoutSeconds: 3
+  lifecycle:
+    preStopSleepSeconds: 30
+
+workerRetry:
+  enabled: false
+  replicaCount: 1
+  podAnnotations: {}
+  terminationGracePeriodSeconds: 75
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  livenessProbe:
+    exec:
+      command: ["node", "-e", "process.exit(0)"]
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 3
+  readinessProbe:
+    exec:
+      command: ["node", "-e", "process.exit(0)"]
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+  lifecycle:
+    preStopSleepSeconds: 20
+  concurrency: "1"
+
+nest:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ghcr.io/example/vahan360-nest
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  podAnnotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "4000"
+  openApiEnabled: false
+  otelEnv: {}
+  extraEnv: {}
+  internalUrl: ""
+  terminationGracePeriodSeconds: 45
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 15
+    timeoutSeconds: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+
+# Shared ConfigMap for api/worker/nest/browser-manager.
+config:
+  NODE_ENV: production
+  BACKEND_PORT: "3001"
+  PORT: "3001"
+  API_V2_PROXY_ENABLED: "false"
+  NEST_INTERNAL_URL: "http://127.0.0.1:4000"
+  METRICS_ENABLED: "false"
+  OTEL_SERVICE_NAME: vahan360
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_TRACES_EXPORTER: otlp
+  INGEST_QUEUE_NAME: scrape-ingest
+  INGEST_CHILD_QUEUE_NAME: scrape-ingest-child
+  INGEST_DLQ_QUEUE_NAME: scrape-ingest-dlq
+  INGEST_RETRY_QUEUE_NAME: scrape-ingest-retry
+  INGEST_JOB_POLLER: "0"
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+  BROWSER_POOL_MAX: "2"
+  BROWSER_POOL_MAX_BROWSERS: "2"
+  BROWSER_POOL_MAX_CONTEXTS_PER_BROWSER: "2"
+  BROWSER_POOL_CONTEXT_RECYCLE_USES: "50"
+  BROWSER_POOL_IDLE_TTL_MS: "60000"
+  BROWSER_POOL_MEMORY_SOFT_LIMIT_MB: "1024"
+  BROWSER_POOL_MEMORY_HARD_LIMIT_MB: "1536"
+  # Per-tenant browser-context quota (opt-in, single-process counts).
+  # Set BROWSER_POOL_QUOTAS_JSON to a JSON map e.g. {"default":2,"org_acme":4}
+  # or BROWSER_POOL_TENANT_MAX_CONTEXTS to a scalar (0 = disabled).
+  # Cluster-wide enforcement needs Redis-backed counters — see §8 checklist.
+  BROWSER_POOL_QUOTAS_JSON: ""
+  BROWSER_POOL_TENANT_MAX_CONTEXTS: "0"
+  BROWSER_POOL_QUOTA_WAIT_MS: "30000"
+  BROWSER_POOL_QUOTA_REJECT_FAST: "false"
+  BROWSER_MANAGER_GRACEFUL_SHUTDOWN_MS: "25000"
+  # Worker ↔ distributed browser-manager (optional). Set when `browserManager.enabled` is true.
+  BROWSER_MANAGER_BASE_URL: ""
+  # Per-tenant concurrent leases on browser-manager acquire path (requires Redis). "0" disables.
+  BROWSER_MAX_CONTEXTS_PER_TENANT: "0"
+  # Stable tenant slug for pool isolation (`(tenantId, portalId)` keys) and browser-manager ACLs.
+  WORKER_TENANT_SLUG: ""
+  # Legacy Puppeteer/Playwright /api/selenium mount. Default off — flip to "true" only
+  # during migration window. Remove after PUPPETEER_SUNSET_PLAN Phase E completes.
+  LEGACY_PUPPETEER_ENABLED: "false"
+
+  # ── Auth / Cookie security (Phase D) ──────────────────────────────────────────
+  # AUTH_COOKIE_SECURE: sends httpOnly cookies only over HTTPS.
+  # "true" is correct for any TLS-terminated deployment (nginx/ALB/etc.).
+  # Override to "false" ONLY in local-dev (no TLS) by setting it in your .env or
+  # a dev-override values file — do NOT change this default for production.
+  AUTH_COOKIE_SECURE: "true"
+
+  # CORS — comma-separated exact origins; wildcard (*) is blocked in production.
+  # MUST be overridden per-deployment via a prod values file or --set.
+  # Example: "https://app.vahan360.example.com,https://ops.vahan360.example.com"
+  # Leaving this empty causes Express to reject all cross-origin requests in production.
+  # For local dev the backend auto-opens CORS when NODE_ENV != production and this is blank.
+  CORS_ORIGIN_ALLOWLIST: ""
+
+  # Helmet Content-Security-Policy is ON by default (HELMET_DISABLE_CSP is unset).
+  # Do NOT add HELMET_DISABLE_CSP: "true" to production values — it disables the CSP header.
+  # Only set it to "1" in a dev-override file when you need Bull Board or SSE without CSP.
+  # HELMET_DISABLE_CSP: "1"   ← dev-override only; never in this prod file
+
+webConfig:
+  NODE_ENV: production
+  PORT: "3000"
+  HOSTNAME: "0.0.0.0"
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  nginx:
+    proxyBodySize: 10m
+    proxyConnectTimeout: "60"
+    proxyReadTimeout: "120"
+    proxySendTimeout: "120"
+    useForwardedHeaders: "true"
+    computeFullForwardedFor: "true"
+  securityHeaders:
+    enabled: false
+    value: |
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+  hosts:
+    - host: vahan360.example.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          service: api
+        - path: /
+          pathType: Prefix
+          service: web
+  tls: []
+
+hpa:
+  enabled: false
+  web:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    cpu:
+      targetUtilization: 70
+  api:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpu:
+      targetUtilization: 70
+    memory:
+      targetUtilization: 80
+  worker:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 12
+    cpu:
+      targetUtilization: 75
+    memory:
+      targetUtilization: 80
+    queueMetrics:
+      enabled: false
+      metricName: scrape_ingest_queue_depth
+      targetAverageValue: "50"
+  workerRetry:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 6
+    cpu:
+      targetUtilization: 75
+    memory:
+      targetUtilization: 80
+    queueMetrics:
+      enabled: false
+      metricName: scrape_ingest_retry_queue_depth
+      targetAverageValue: "20"
+
+# KEDA (queue-depth autoscaling). Requires KEDA CRDs on the cluster (`kubectl get crd scaledobjects.keda.sh`).
+# BullMQ wait list Redis key pattern: `bull:<queueName>:wait` (see `packages/contracts/src/ingest-bull-queues.ts`).
+keda:
+  enabled: false
+  pollingInterval: 30
+  cooldownPeriod: 300
+  restoreToOriginalReplicaCount: false
+  redis:
+    # REQUIRED when `keda.enabled=true` for Redis list scaler (external Elasticache/cluster Redis).
+    address: ""
+    enableTLS: "false"
+    username: ""
+    passwordSecretName: ""
+    passwordSecretKey: ""
+  worker:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 12
+    listLength: "50"
+    activationListLength: "1"
+    queueName: ""
+  workerRetry:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 8
+    listLength: "20"
+    activationListLength: "1"
+    queueName: ""
+
+# PgBouncer / pooler URLs — repo ships Helm `databaseUrlSource: direct|pgbouncer` + Secret key `DATABASE_URL_PGBOUNCER`
+# (see `_helpers.tpl` `vahan360.dbUrlSecretKey`, `deploy/helm/vahan360/snippets/pgBouncer-values.overlay.yaml`).
+# Optional Bitnami `postgresql`/`pgpool` sub-chart remains operator choice (BYO infra).
+
+pdb:
+  enabled: true
+  api:
+    enabled: true
+    minAvailable: 1
+  worker:
+    enabled: true
+    minAvailable: 1
+  workerRetry:
+    enabled: false
+    minAvailable: 1
+  browserManager:
+    enabled: false
+    minAvailable: 1
+  nest:
+    enabled: false
+    minAvailable: 1

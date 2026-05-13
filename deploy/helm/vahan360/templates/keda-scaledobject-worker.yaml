@@ -1,0 +1,57 @@
+{{- /*
+  KEDA Redis list scaler for BullMQ ingest worker.
+  Prerequisite: KEDA installed (`kubectl get crd scaledobjects.keda.sh`).
+  Queue depth uses Redis list key: bull:<queueName>:wait (BullMQ default prefix + :wait).
+  See packages/contracts/src/ingest-bull-queues.ts for default names.
+*/ -}}
+{{- if and .Values.keda.enabled .Values.worker.enabled .Values.keda.worker.enabled }}
+{{- $addr := .Values.keda.redis.address }}
+{{- if not $addr }}
+  {{- if .Values.redis.enabled }}
+    {{- $addr = printf "%s-redis-master.%s.svc.cluster.local:6379" .Release.Name .Release.Namespace }}
+  {{- else }}
+    {{- fail "keda.enabled: set keda.redis.address to host:port for external Redis, or enable chart redis.enabled" }}
+  {{- end }}
+{{- end }}
+{{- $q := default (index .Values.config "INGEST_QUEUE_NAME") "scrape-ingest" }}
+{{- if .Values.keda.worker.queueName }}
+  {{- $q = .Values.keda.worker.queueName }}
+{{- end }}
+{{- $listName := printf "bull:%s:wait" $q }}
+{{- $authName := printf "%s-keda-redis" (include "vahan360.fullname" .) }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker-so
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+  annotations:
+    vahan360.dev/scaler: "redis"
+    vahan360.dev/redis-list: {{ $listName | quote }}
+spec:
+  scaleTargetRef:
+    name: {{ include "vahan360.fullname" . }}-worker
+  minReplicaCount: {{ .Values.keda.worker.minReplicas }}
+  maxReplicaCount: {{ .Values.keda.worker.maxReplicas }}
+  pollingInterval: {{ .Values.keda.pollingInterval }}
+  cooldownPeriod: {{ .Values.keda.cooldownPeriod }}
+  {{- if .Values.keda.restoreToOriginalReplicaCount }}
+  restoreToOriginalReplicaCount: true
+  {{- end }}
+  triggers:
+    - type: redis
+      metadata:
+        address: {{ $addr | quote }}
+        listName: {{ $listName | quote }}
+        listLength: {{ .Values.keda.worker.listLength | quote }}
+        activationListLength: {{ .Values.keda.worker.activationListLength | quote }}
+        enableTLS: {{ .Values.keda.redis.enableTLS | default "false" | quote }}
+        {{- if .Values.keda.redis.username }}
+        username: {{ .Values.keda.redis.username | quote }}
+        {{- end }}
+      {{- if and .Values.keda.redis.passwordSecretName .Values.keda.redis.passwordSecretKey }}
+      authenticationRef:
+        name: {{ $authName }}
+      {{- end }}
+{{- end }}

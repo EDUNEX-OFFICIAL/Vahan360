@@ -1,14 +1,18 @@
 {
-  "name": "spybot-nextjs",
+  "name": "vahan360",
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "test": "turbo run test"
+    "test": "turbo run test",
+    "precommit": "pnpm exec lint-staged",
+    "prepare": "husky"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "turbo": "^1.13.4"
   }
 }

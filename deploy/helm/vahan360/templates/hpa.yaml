@@ -1,0 +1,139 @@
+{{- if .Values.hpa.enabled }}
+{{- $webOn := and .Values.web.enabled .Values.hpa.web.enabled }}
+{{- $apiOn := and .Values.api.enabled .Values.hpa.api.enabled }}
+{{- $workerOn := and .Values.worker.enabled .Values.hpa.worker.enabled }}
+{{- $workerRetryOn := and .Values.workerRetry.enabled .Values.hpa.workerRetry.enabled }}
+{{- if $webOn }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vahan360.fullname" . }}-web
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vahan360.fullname" . }}-web
+  minReplicas: {{ .Values.hpa.web.minReplicas }}
+  maxReplicas: {{ .Values.hpa.web.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.web.cpu.targetUtilization }}
+{{- end }}
+{{- if $apiOn }}
+{{- if $webOn }}
+---
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vahan360.fullname" . }}-api
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vahan360.fullname" . }}-api
+  minReplicas: {{ .Values.hpa.api.minReplicas }}
+  maxReplicas: {{ .Values.hpa.api.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.api.cpu.targetUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.api.memory.targetUtilization }}
+{{- end }}
+{{- if $workerOn }}
+{{- if or $webOn $apiOn }}
+---
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vahan360.fullname" . }}-worker
+  minReplicas: {{ .Values.hpa.worker.minReplicas }}
+  maxReplicas: {{ .Values.hpa.worker.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.worker.cpu.targetUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.worker.memory.targetUtilization }}
+    {{- if .Values.hpa.worker.queueMetrics.enabled }}
+    - type: External
+      external:
+        metric:
+          name: {{ .Values.hpa.worker.queueMetrics.metricName | quote }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.hpa.worker.queueMetrics.targetAverageValue | quote }}
+    {{- end }}
+{{- end }}
+{{- if $workerRetryOn }}
+{{- if or $webOn $apiOn $workerOn }}
+---
+{{- end }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker-retry
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "vahan360.fullname" . }}-worker-retry
+  minReplicas: {{ .Values.hpa.workerRetry.minReplicas }}
+  maxReplicas: {{ .Values.hpa.workerRetry.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.workerRetry.cpu.targetUtilization }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.workerRetry.memory.targetUtilization }}
+    {{- if .Values.hpa.workerRetry.queueMetrics.enabled }}
+    - type: External
+      external:
+        metric:
+          name: {{ .Values.hpa.workerRetry.queueMetrics.metricName | quote }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.hpa.workerRetry.queueMetrics.targetAverageValue | quote }}
+    {{- end }}
+{{- end }}
+{{- end }}

@@ -1,4 +1,6 @@
-# Vahan360 local PostgreSQL (Docker)
+# Vahan360 local PostgreSQL (Docker) — dev notes
+
+> Scope: developer notes for connecting **pgAdmin** to the local Postgres started by the **root `docker-compose.yml`** (`postgres` service on host port **`5433`**). Production / cluster Postgres lives in **`deploy/helm/vahan360/`** — see the Helm chart and `deploy/k8s/` for that path. There is no separate `deploy/docker/` tree.
 
 pgAdmin cannot be opened from this repo automatically — use the values below.
 
@@ -39,7 +41,7 @@ Postgres only reads `POSTGRES_PASSWORD` on **first** data directory init. After 
 **Reset local data (wipes DB):**
 
 ```powershell
-cd "d:\AK47\Officials\Development\Projects\Vahan360\spybot both\vahan360"
+# Run from the repo root (where `docker-compose.yml` lives).
 docker compose stop postgres
 docker compose rm -f postgres
 docker volume rm vahan360_vahan360_pg_data

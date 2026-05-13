@@ -1,0 +1,283 @@
+// Isolated namespaces: `ingest` (control plane + raw captures), `processed` (aggregate stubs),
+// `system` (ops / audit). Coexists with legacy `backend` Prisma models on `public`.
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["ingest", "processed", "system"]
+}
+
+/// Control-plane job row; `payload` mirrors @vahan360/contracts scrape job JSON.
+model ScrapeJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  /// Tenant / namespace for multi-tenant ingest isolation (v1).
+  tenantId       String    @default("default") @map("tenant_id")
+  kind           String    @map("kind")
+  status         String    @default("queued") @map("status")
+  payload        Json      @map("payload")
+  idempotencyKey String?   @unique @map("idempotency_key")
+  priority       Int       @default(0) @map("priority")
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  events            JobEvent[]
+  rawChallans       RawChallan[]
+  rawPermits        RawPermit[]
+  rawInsurances     RawInsurance[]
+  rawKhananRecords  RawKhananRecord[]
+  rawVehicleRecords RawVehicleRecord[]
+  rawFitnessRecords RawFitnessRecord[]
+  failedJobs        FailedJob[]
+
+  @@index([status, priority, createdAt(sort: Asc)], map: "idx_scrape_jobs_status_priority_created")
+  @@index([tenantId, createdAt(sort: Desc)], map: "idx_scrape_jobs_tenant_created")
+  @@map("scrape_jobs")
+  @@schema("ingest")
+}
+
+/// Append-only job diagnostics / queue mirror of JobEventEnvelope.
+model JobEvent {
+  id         BigInt   @id @default(autoincrement())
+  jobId      String   @map("job_id") @db.Uuid
+  level      String   @map("level")
+  eventType  String   @map("event_type")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  payload    Json?    @map("payload")
+
+  job ScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, occurredAt(sort: Desc)], map: "idx_job_events_job_occurred")
+  @@map("job_events")
+  @@schema("ingest")
+}
+
+model RawChallan {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_challan_job")
+  @@index([capturedAt(sort: Desc)], map: "idx_raw_challan_captured")
+  @@map("raw_challans")
+  @@schema("ingest")
+}
+
+model RawPermit {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_permit_job")
+  @@map("raw_permits")
+  @@schema("ingest")
+}
+
+model RawInsurance {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_insurance_job")
+  @@map("raw_insurances")
+  @@schema("ingest")
+}
+
+/// Raw Khanan portal captures (dedup by content hash; same pattern as raw_challans).
+model RawKhananRecord {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  /// Extracted district slug (e.g. "patna", "gaya") for direct column-level filtering —
+  /// avoids JSON-blob scan on compressed snapshot rows (§6 spatial predicate fix).
+  districtKey String?  @map("district_key")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_khanan_job")
+  @@index([capturedAt(sort: Desc)], map: "idx_raw_khanan_captured")
+  @@index([districtKey, capturedAt(sort: Desc)], map: "idx_raw_khanan_district_captured")
+  @@map("raw_khanan_records")
+  @@schema("ingest")
+}
+
+/// Raw vehicle / VAHAN-adjacent captures (dedup by content hash).
+model RawVehicleRecord {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_vehicle_job")
+  @@map("raw_vehicle_records")
+  @@schema("ingest")
+}
+
+/// Raw fitness / validity portal captures (dedup by content hash).
+model RawFitnessRecord {
+  id          BigInt   @id @default(autoincrement())
+  scrapeJobId String?  @map("scrape_job_id") @db.Uuid
+  contentHash String   @unique @map("content_hash")
+  payload     Json     @map("payload")
+  sourceUrl   String?  @map("source_url")
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+
+  job ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([scrapeJobId], map: "idx_raw_fitness_job")
+  @@index([capturedAt(sort: Desc)], map: "idx_raw_fitness_captured")
+  @@map("raw_fitness_records")
+  @@schema("ingest")
+}
+
+// --- Processed-layer stubs (ETL targets; not the legacy `public.vehicle_trip_summary` ORM) ---
+
+model ProcessedVehicleTripSummary {
+  id           String   @id @default(uuid()) @db.Uuid
+  vehicleRegNo String   @unique @map("vehicle_reg_no")
+  snapshot     Json     @default("{}") @map("snapshot")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("vehicle_trip_summary")
+  @@schema("processed")
+}
+
+model ProcessedVehicleComplianceSummary {
+  id           String   @id @default(uuid()) @db.Uuid
+  vehicleRegNo String   @unique @map("vehicle_reg_no")
+  snapshot     Json     @default("{}") @map("snapshot")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("vehicle_compliance_summary")
+  @@schema("processed")
+}
+
+model ProcessedConsignerSummary {
+  id           String   @id @default(uuid()) @db.Uuid
+  consignerKey String   @unique @map("consigner_key")
+  snapshot     Json     @default("{}") @map("snapshot")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("consigner_summary")
+  @@schema("processed")
+}
+
+model ProcessedDistrictSummary {
+  id        String   @id @default(uuid()) @db.Uuid
+  district  String   @unique @map("district")
+  snapshot  Json     @default("{}") @map("snapshot")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("district_summary")
+  @@schema("processed")
+}
+
+// --- System / ops ---
+
+/// Org tenant graph: each row links a logical org / org-path node to a tenant slug.
+/// Used by TenantGuard for FK-backed org membership checks beyond JWT bootstrap claims.
+model TenantOrg {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Stable slug used in JWT `tid`/`ptid` claims and scrape_jobs.tenant_id.
+  tenantSlug String  @unique @map("tenant_slug")
+  /// Org identifier (matches JWT `oid` / X-Org-Id header).
+  orgId     String   @map("org_id")
+  /// Dotted path for nested orgs: "root.child.grandchild". Root = orgId.
+  orgPath   String   @map("org_path")
+  /// Human-readable label for ops dashboards.
+  label     String?  @map("label")
+  /// Hard-disable without deletion (e.g. during offboarding).
+  active    Boolean  @default(true) @map("active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([orgId], map: "idx_tenant_orgs_org_id")
+  @@index([orgPath], map: "idx_tenant_orgs_org_path")
+  @@map("tenant_orgs")
+  @@schema("system")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actor     String?  @map("actor")
+  action    String   @map("action")
+  resource  String?  @map("resource")
+  payload   Json?    @map("payload")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "idx_audit_logs_created")
+  @@map("audit_logs")
+  @@schema("system")
+}
+
+model WorkerStatus {
+  workerId      String   @id @map("worker_id")
+  queueName     String?  @map("queue_name")
+  status        String   @default("unknown") @map("status")
+  lastHeartbeat DateTime @default(now()) @map("last_heartbeat") @db.Timestamptz(6)
+  detail        Json?    @map("detail")
+
+  @@map("worker_status")
+  @@schema("system")
+}
+
+model QueueMetric {
+  id         BigInt   @id @default(autoincrement())
+  queueName  String   @map("queue_name")
+  sample     Json     @default("{}") @map("sample")
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([queueName, recordedAt(sort: Desc)], map: "idx_queue_metrics_name_time")
+  @@map("queue_metrics")
+  @@schema("system")
+}
+
+/// BullMQ terminal failures mirrored into Postgres for ops / triage (`system.failed_jobs`).
+model FailedJob {
+  id            String   @id @default(uuid()) @db.Uuid
+  queueName     String   @map("queue_name")
+  jobName       String?  @map("job_name")
+  bullJobId     String?  @map("bull_job_id")
+  correlationId String?  @map("correlation_id")
+  scrapeJobId   String?  @map("scrape_job_id") @db.Uuid
+  payload       Json?    @map("payload")
+  errorMessage  String   @map("error_message") @db.Text
+  errorStack    String?  @map("error_stack") @db.Text
+  attempts      Int      @default(0) @map("attempts")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  scrapeJob ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
+
+  @@index([queueName, createdAt(sort: Desc)], map: "idx_failed_jobs_queue_created")
+  @@index([createdAt(sort: Desc)], map: "idx_failed_jobs_created")
+  @@map("failed_jobs")
+  @@schema("system")
+}

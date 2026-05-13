@@ -1,0 +1,49 @@
+fullnameOverride: vahan360-scraper
+
+workloads:
+  profile: scraper
+
+web:
+  enabled: false
+
+api:
+  enabled: false
+
+nest:
+  enabled: false
+
+worker:
+  enabled: true
+
+workerRetry:
+  enabled: true
+
+browserManager:
+  enabled: true
+
+ingress:
+  enabled: false
+
+hpa:
+  enabled: true
+  web:
+    enabled: false
+  api:
+    enabled: false
+  worker:
+    enabled: true
+  workerRetry:
+    enabled: true
+
+pdb:
+  enabled: true
+  api:
+    enabled: false
+  worker:
+    enabled: true
+  workerRetry:
+    enabled: true
+  browserManager:
+    enabled: true
+  nest:
+    enabled: false

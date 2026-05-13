@@ -8,13 +8,13 @@ This document is a **step-by-step runbook** for migrating the Express + Mongoose
 
 ## Source → target (DigitalOcean Mongo → PostgreSQL)
 
-**Current state:** **Operational scrape data** lives in **MongoDB on DigitalOcean** — database **`khanan_db`**. Raw rows may appear as **`khanan_data`** and/or **`khanandatas`** (Java Spring vs Node/Mongoose naming); Compass shows **`khanan_data` ~25M** docs. Other collections: **`vehicletripsummaries`**, **`users`**, etc. Node writes via [`puppeteerService.js`](../backend/src/services/puppeteerService.js); aggregation in [`vehicleAggregator.js`](../backend/src/utils/vehicleAggregator.js).
+**Current state:** **Operational scrape data** lives in **MongoDB on DigitalOcean** — database **`khanan_db`**. Raw rows may appear as **`khanan_data`** and/or **`khanandatas`** (Java Spring vs Node/Mongoose naming); Compass shows **`khanan_data` ~25M** docs. Other collections: **`vehicletripsummaries`**, **`users`**, etc. Node writes via [`browserAutomationService.js`](../apps/api-express/src/services/browserAutomationService.js) (Playwright; legacy HTTP mount **`/api/selenium`** is URL-only naming); aggregation in [`vehicleAggregator.js`](../apps/api-express/src/utils/vehicleAggregator.js).
 
 **Target state:** PostgreSQL deployed on your **Hostinger VPS** (self-hosted), matching [docs/schema/postgres/README.md](./schema/postgres/README.md). Data flows **DigitalOcean Mongo → (network) → Postgres on VPS**; the app then uses `DATABASE_URL` per Section 8.
 
 **Local laptop — two different things:**
 
-- **New scrape → Postgres locally (dev):** Start the **pipeline** on your machine: local Postgres (e.g. Docker), `DATABASE_URL` → localhost, run backend/scraper so **fresh scrape rows** begin landing in Postgres. Then **deploy the same** (compose / env / migrations) to **Hostinger VPS** and point live `DATABASE_URL` at VPS Postgres — **fast path to production** for *going forward*.
+- **New scrape → Postgres locally (dev):** Start the **pipeline** on your machine: local Postgres (e.g. Docker), `DATABASE_URL` → localhost, run apps/api-express/scraper so **fresh scrape rows** begin landing in Postgres. Then **deploy the same** (compose / env / migrations) to **Hostinger VPS** and point live `DATABASE_URL` at VPS Postgres — **fast path to production** for *going forward*.
 - **Historical ~25M rows backfill:** **Do not** copy the full production Mongo export onto a laptop. Use **VPS-side (or server) chunked ETL** into Postgres on the VPS.
 
 ---
@@ -85,7 +85,7 @@ Rough ballpark: **25M × ~0.5–1 KB/doc ≈ tens of GB** data; indexes **extra*
    - Cursor-based export: `_id` ranges or **time buckets** (`createdAt` batches), **50k–250k rows** per batch.
    - Transform camelCase → snake_case per batch → **`COPY`** / batched `INSERT` into Postgres on **VPS** (transactions per batch).
 3. **Tools:** custom **Node** script (`mongodb` driver cursor + `pg` COPY) is typical; alternatives evaluated per team (Airbyte / custom); validate **SSL** to DigitalOcean Mongo and **private/local** Postgres on VPS.
-4. **`vehicle_trip_summary`:** optional — **rebuild from Postgres `khanan_data`** using SQL `GROUP BY` vehicle (same logic as [`vehicleAggregator.js`](../backend/src/utils/vehicleAggregator.js)) instead of copying Mongo collection, if business agrees totals match.
+4. **`vehicle_trip_summary`:** optional — **rebuild from Postgres `khanan_data`** using SQL `GROUP BY` vehicle (same logic as [`vehicleAggregator.js`](../apps/api-express/src/utils/vehicleAggregator.js)) instead of copying Mongo collection, if business agrees totals match.
 5. **`users`:** small — migrate anytime; often **first**.
 
 ### Step 4 — Validation
@@ -114,19 +114,19 @@ PostgreSQL gives **strong schemas**, **relational constraints**, **mature SQL to
 
 | Collection (Mongoose model) | Source file | Role |
 |-----------------------------|-------------|------|
-| `KhananData` | `backend/src/models/KhananData.js` | Raw scraped mineral / challan rows |
-| `VehicleTripSummary` | `backend/src/models/VehicleTripSummary.js` | Denormalized CRM-style summary per vehicle |
-| `User` | `backend/src/models/User.js` | Auth (`username`, `password`, `tokenVersion`, etc.) |
+| `KhananData` | `apps/api-express/src/models/KhananData.js` | Raw scraped mineral / challan rows |
+| `VehicleTripSummary` | `apps/api-express/src/models/VehicleTripSummary.js` | Denormalized CRM-style summary per vehicle |
+| `User` | `apps/api-express/src/models/User.js` | Auth (`username`, `password`, `tokenVersion`, etc.) |
 
-**Connection:** `backend/src/app.js` — `MONGODB_URI`, `MONGODB_DB_NAME`.
+**Connection:** `apps/api-express/src/app.js` — `MONGODB_URI`, `MONGODB_DB_NAME`.
 
 **Heavy usage:**
 
-- **Reads/filters:** `backend/src/routes/khanan.js` — date filter uses **`$in`** with a **list of formatted date strings** (audit: large ranges → BSON/query size risk).
-- **Aggregations:** `backend/src/utils/vehicleAggregator.js` — Mongo **`$group`**, **`$convert`** on quantity; `khanan.js` stats route — **`$match` + `$group`**.
-- **Regex search:** `backend/src/utils/vehicleQueryBuilder.js` — Mongo **`RegExp`** on many fields (audit: ReDoS risk if user input not escaped consistently).
-- **Writes:** `backend/src/services/puppeteerService.js` — **`insertMany`** with **`ordered: false`**; duplicate key **`11000`** handling for challan dedupe.
-- **Upserts:** `backend/src/routes/vehicle.js`, `vehicleAggregator.js` — **`findOneAndUpdate`** with **`upsert: true`**.
+- **Reads/filters:** `apps/api-express/src/routes/khanan.js` — date filter uses **`$in`** with a **list of formatted date strings** (audit: large ranges → BSON/query size risk).
+- **Aggregations:** `apps/api-express/src/utils/vehicleAggregator.js` — Mongo **`$group`**, **`$convert`** on quantity; `khanan.js` stats route — **`$match` + `$group`**.
+- **Regex search:** `apps/api-express/src/utils/vehicleQueryBuilder.js` — Mongo **`RegExp`** on many fields (audit: ReDoS risk if user input not escaped consistently).
+- **Writes:** `apps/api-express/src/services/browserAutomationService.js` — **`insertMany`** with **`ordered: false`**; duplicate key **`11000`** handling for challan dedupe.
+- **Upserts:** `apps/api-express/src/routes/vehicle.js`, `vehicleAggregator.js` — **`findOneAndUpdate`** with **`upsert: true`**.
 
 ---
 
@@ -243,34 +243,34 @@ Index: [docs/schema/postgres/README.md](./schema/postgres/README.md)
 
 Do **not** treat this as mandatory order for coding — it’s a dependency-aware checklist.
 
-1. **`backend/src/app.js`**  
+1. **`apps/api-express/src/app.js`**  
    - Remove `mongoose.connect`; add Postgres pool (`pg` or ORM client).  
    - Health check endpoint should verify DB connectivity.
 
-2. **Auth** — `backend/src/routes/auth.js`, `backend/src/middleware/auth.js`  
+2. **Auth** — `apps/api-express/src/routes/auth.js`, `apps/api-express/src/middleware/auth.js`  
    - Replace `User.findOne`, `save`, `tokenVersion` updates with SQL/ORM equivalents.
 
-3. **Khanan API** — `backend/src/routes/khanan.js`  
+3. **Khanan API** — `apps/api-express/src/routes/khanan.js`  
    - Replace `find`, `countDocuments`, `aggregate`, `distinct` with SQL (`WHERE`, `GROUP BY`, `COUNT`, `SELECT DISTINCT`).  
    - **Date filter:** either keep generating a list of formatted strings and use `WHERE date = ANY($1::text[])` **or** change storage to real dates and use range queries (recommended long-term).
 
-4. **Vehicle API** — `backend/src/routes/vehicle.js`  
+4. **Vehicle API** — `apps/api-express/src/routes/vehicle.js`  
    - Replace `find`, `findOne`, `findOneAndUpdate`, `aggregate`, `distinct`.  
    - **Upsert:** `INSERT ... ON CONFLICT (vehicle_reg_no) DO UPDATE`.
 
-5. **Query builder** — `backend/src/utils/vehicleQueryBuilder.js`  
+5. **Query builder** — `apps/api-express/src/utils/vehicleQueryBuilder.js`  
    - Today returns Mongo filter objects with **`RegExp`**. In Postgres use parameterized **`ILIKE`**, **`SIMILAR TO`**, or **`pg_trgm`** for search — **always escape** user input (audit concern).
 
-6. **Aggregator** — `backend/src/utils/vehicleAggregator.js`  
+6. **Aggregator** — `apps/api-express/src/utils/vehicleAggregator.js`  
    - Replace `KhananData.aggregate([...])` with one SQL query: `GROUP BY` normalized `vehicle_reg_no`, `SUM`, `MAX`/`MIN` as needed; then upsert into `vehicle_trip_summary`. Consider reducing **per-row** round trips (audit noted **O(n) `findOneAndUpdate`**).
 
-7. **Scraper** — `backend/src/services/puppeteerService.js`  
+7. **Scraper** — `apps/api-express/src/services/browserAutomationService.js`  
    - Replace `insertMany` with batched **`INSERT ... ON CONFLICT DO NOTHING`** on `challan_no` (or equivalent) and map Postgres **unique_violation** (`23505`) instead of Mongo `11000`.
 
-8. **Scripts** — `backend/scripts/sync-local-user.js`  
+8. **Scripts** — `apps/api-express/scripts/sync-local-user.js`  
    - Point to Postgres or replace with SQL seed.
 
-9. **Dependencies** — `backend/package.json`  
+9. **Dependencies** — `apps/api-express/package.json`  
    - Remove `mongoose`; add `pg` or chosen ORM + migration CLI.
 
 10. **Docker / env** — `docker-compose.yml`, README  
@@ -280,7 +280,7 @@ Do **not** treat this as mandatory order for coding — it’s a dependency-awar
 
 ## 9. Testing strategy
 
-- **Unit:** query-builder tests (`backend/src/utils/__tests__/vehicleQueryBuilder.test.js`) → rewrite expectations for SQL adapter / predicates.
+- **Unit:** query-builder tests (`apps/api-express/src/utils/__tests__/vehicleQueryBuilder.test.js`) → rewrite expectations for SQL adapter / predicates.
 - **Integration:** login, `/api/khanan/data`, `/api/vehicle/trip-summary`, `POST /api/vehicle/sync` (or equivalent) against Postgres in CI or docker-compose.
 - **Performance:** compare heavy filters and aggregation runtime; add indexes only after measuring.
 
@@ -290,18 +290,18 @@ Do **not** treat this as mandatory order for coding — it’s a dependency-awar
 
 Today login likely exposes Mongo **`_id`**. Decide explicitly:
 
-- **Option A:** JWT payload uses new **`uuid` / bigint** string — **frontend** (`frontend/src/app/login/page.tsx`, etc.) must still work with stored user id if used.
+- **Option A:** JWT payload uses new **`uuid` / bigint** string — **@vahan360/web** (`apps/web/src/app/login/page.tsx`, etc.) must still work with stored user id if used.
 - **Option B:** keep a stable **`legacy_mongo_id`** column only for audit, but issue new ids to clients.
 
 Document the chosen option in README / API notes.
 
 ### Khanan scrape: date range, env, and duplicates
 
-- **`SCRAPE_MAX_RANGE_DAYS`** (default **31**): maximum inclusive calendar span for **`POST /api/selenium/scrape-range`** and for validated **`GET /api/selenium/by-date-range`**.
+- **`SCRAPE_MAX_RANGE_DAYS`** (default **31**): maximum inclusive calendar span for **`POST /api/selenium/scrape-range`** and for validated **`GET /api/selenium/by-date-range`** (paths under **`LEGACY_ROUTE_MOUNT=/api/selenium`** — legacy URL prefix; routes: `apps/api-express/src/routes/legacyBrowserAutomation.js`).
 - **`SCRAPE_ALLOW_FUTURE_DATES`**: set to **`1`** or **`true`** to allow `fromDate` / `toDate` in the future; default behaviour rejects future dates.
 - **`SCRAPE_AUTO_SYNC_VEHICLES`**: set to **`1`** / **`true`** to auto-run vehicle summary aggregation after scraper completion (same effect as `POST /api/vehicle/sync`), so Leads can pick up latest Khanan rows without manual sync.
 - **Redundant scrape guard:** date-range and quick daily start endpoints perform a preflight DB coverage check and skip starting scraper if selected scope already has data.
-- **Last-run persistence:** latest run metadata is persisted in scraper state storage and returned via `/api/selenium/status` and `/api/selenium/last-run`, surviving backend restarts.
+- **Last-run persistence:** latest run metadata is persisted in scraper state storage and returned via **`/api/selenium/status`** and **`/api/selenium/last-run`** (same legacy mount), surviving backend restarts.
 - **Duplicates:** Postgres keeps **`challan_no` unique**; the scraper uses **`createMany({ skipDuplicates: true })`**. Re-scraping the same calendar day does **not** insert duplicate challan rows—only **new** challan numbers from the portal are inserted; everything else is skipped.
 - **`SCRAPING_MODE=local`:** date-range runs use **`runLocalScraping`** (seeded rows), not the live Khanan portal.
 
@@ -330,7 +330,7 @@ Document the chosen option in README / API notes.
 ### JWT_SECRET rotation
 
 - **`NODE_ENV=production`** par backend tab tak start nahi karega jab tak **`JWT_SECRET`** set na ho aur **kam se kam 32 characters** ka na ho (placeholder values reject).
-- **Rotate:** naya secret generate karo (`openssl rand -base64 48` ya `cd backend && npm run jwt:secret` — output [`backend/scripts/generate-jwt-secret.js`](../backend/scripts/generate-jwt-secret.js)), secrets manager / `.env` update, API redeploy. **Saare purane JWT invalid** — users dubara **login** karenge.
+- **Rotate:** naya secret generate karo (`openssl rand -base64 48` ya `pnpm --filter @vahan360/api-express run jwt:secret` — output [`apps/api-express/scripts/generate-jwt-secret.js`](../apps/api-express/scripts/generate-jwt-secret.js)), secrets manager / `.env` update, API redeploy. **Saare purane JWT invalid** — users dubara **login** karenge.
 - Docker Compose: `JWT_SECRET` ko compose ke saath wali **`.env`** mein set karo (commit mat karo).
 
 ### Postgres: SCRAM-only, `trust` nahi

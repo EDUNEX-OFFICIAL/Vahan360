@@ -1,0 +1,13 @@
+{{- if and .Values.keda.enabled .Values.keda.redis.passwordSecretName .Values.keda.redis.passwordSecretKey }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "vahan360.fullname" . }}-keda-redis
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ .Values.keda.redis.passwordSecretName | quote }}
+      key: {{ .Values.keda.redis.passwordSecretKey | quote }}
+{{- end }}

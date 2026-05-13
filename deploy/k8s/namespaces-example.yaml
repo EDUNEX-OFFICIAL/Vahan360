@@ -1,0 +1,40 @@
+# Example: multi-namespace layout for larger clusters (OPTIONAL).
+# The bundled Helm chart (`deploy/helm/vahan360`) defaults to a single release
+# namespace (e.g. `vahan360` via `helm install --namespace vahan360`).
+# This file is **documentation-first**: uncomment blocks to apply.
+#
+# Single-namespace baseline already ships as `deploy/k8s/namespaces.yaml`.
+#
+# Suggested boundaries (comments only — uncomment to apply):
+#
+# - frontend   — Next.js / static ingress consumers
+# - backend    — Express API + Nest (or split further)
+# - scraper    — worker-ingest, browser-heavy workloads (higher limits, taints)
+# - database   — Postgres operator / StatefulSet (often external managed DB instead)
+# - monitoring — Prometheus, Grafana, Loki agents
+#
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: vahan360-frontend
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: vahan360-backend
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: vahan360-scraper
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: vahan360-database
+# ---
+# apiVersion: v1
+# kind: Namespace
+# metadata:
+#   name: vahan360-monitoring

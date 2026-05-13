@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            BigInt   @id @default(autoincrement())
+  legacyMongoId String?  @unique @map("legacy_mongo_id")
+  firstName     String?  @map("first_name")
+  lastName      String?  @map("last_name")
+  email         String?
+  username      String   @unique
+  /// When set, JWT / `X-Tenant-Id` must resolve to this slug (Nest v2 tenant guard).
+  tenantId      String?  @map("tenant_id")
+  password      String
+  /// RBAC slugs (Postgres `text[]`). Prefer multiple rows over comma-joining a string.
+  roles         String[] @default(["USER"])
+  tokenVersion  Int      @default(0) @map("token_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  refreshSessions RefreshSession[]
+
+  @@map("users")
+}
+
+model RefreshSession {
+  id        String   @id @default(uuid())
+  userId    BigInt   @map("user_id")
+  tokenHash String   @map("token_hash")
+  jti       String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  rotatedAt DateTime? @map("rotated_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_refresh_session_user_id")
+  @@index([expiresAt], map: "idx_refresh_session_expires_at")
+  @@map("refresh_sessions")
+}
+
+model KhananData {
+  id             BigInt   @id @default(autoincrement())
+  legacyMongoId  String?  @unique @map("legacy_mongo_id")
+  district       String
+  consignerName  String   @map("consigner_name")
+  date           String
+  sourceType     String   @map("source_type")
+  consigneeName  String   @map("consignee_name")
+  challanNo      String   @unique @map("challan_no")
+  mineralName    String   @map("mineral_name")
+  mineralCategory String  @map("mineral_category")
+  vehicleRegNo   String   @map("vehicle_reg_no")
+  destination    String
+  transportedDate String  @map("transported_date")
+  quantity       Decimal  @db.Decimal(14, 3)
+  unit           String
+  checkStatus    String?  @default("Pending") @map("check_status")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([district, date], map: "idx_khanan_district_date")
+  @@index([vehicleRegNo], map: "idx_khanan_vehicle_reg_no")
+  @@map("khanan_data")
+}
+
+model VehicleTripSummary {
+  id                 BigInt    @id @default(autoincrement())
+  vehicleRegNo       String    @unique @map("vehicle_reg_no")
+  totalTrips         Int       @default(0) @map("total_trips")
+  totalMtWeight      Float     @default(0) @map("total_mt_weight")
+  sandTrips          Int       @default(0) @map("sand_trips")
+  sandMtWeight       Float     @default(0) @map("sand_mt_weight")
+  stoneTrips         Int       @default(0) @map("stone_trips")
+  stoneMtWeight      Float     @default(0) @map("stone_mt_weight")
+  ownerName          String?   @map("owner_name")
+  mobileNo           String?   @map("mobile_no")
+  make               String?
+  model              String?
+  gvwKgs             Float?    @map("gvw_kgs")
+  unladenWeightKgs   Float?    @map("unladen_weight_kgs")
+  vehicleCategory    String?   @map("vehicle_category")
+  fatherName         String?   @map("father_name")
+  currentFullAddress String?   @map("current_full_address")
+  currentPincode     String?   @map("current_pincode")
+  currentDistrict    String?   @map("current_district")
+  permanentFullAddress String? @map("permanent_full_address")
+  permanentPincode   String?   @map("permanent_pincode")
+  permanentDistrict  String?   @map("permanent_district")
+  insuranceCompany   String?   @map("insurance_company")
+  insurancePolicyNo  String?   @map("insurance_policy_no")
+  insuranceDueDate   DateTime? @map("insurance_due_date") @db.Timestamptz(6)
+  permitValidUpto    DateTime? @map("permit_valid_upto") @db.Timestamptz(6)
+  fitnessValidUpto   DateTime? @map("fitness_valid_upto") @db.Timestamptz(6)
+  pollutionValidUpto DateTime? @map("pollution_valid_upto") @db.Timestamptz(6)
+  mvTaxPaidUpto      DateTime? @map("mv_tax_paid_upto") @db.Timestamptz(6)
+  leadSource         String?   @map("lead_source")
+  offence            String?
+  panNumber          String?   @map("pan_number")
+  panAddress         String?   @map("pan_address")
+  gstin              String?
+  legalName          String?   @map("legal_name")
+  gstTradeName       String?   @map("gst_trade_name")
+  gstContact         String?   @map("gst_contact")
+  gstEmail           String?   @map("gst_email")
+  khananPhone        String?   @map("khanan_phone")
+  customerType       String?   @map("customer_type")
+  status             String    @default("pending")
+  nextFollowUp       DateTime? @map("next_follow_up") @db.Timestamptz(6)
+  assignedExecutive  String?   @map("assigned_executive")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerName], map: "idx_vts_owner_name")
+  @@index([status], map: "idx_vts_status")
+  @@index([vehicleCategory, customerType], map: "idx_vts_vehicle_category_customer_type")
+  @@index([make, model], map: "idx_vts_make_model")
+  @@index([currentDistrict, currentPincode], map: "idx_vts_current_district_pincode")
+  @@index([permanentDistrict, permanentPincode], map: "idx_vts_permanent_district_pincode")
+  @@index([createdAt(sort: Desc)], map: "idx_vts_created_at_desc")
+  @@index([insuranceDueDate], map: "idx_vts_insurance_due_date")
+  @@index([fitnessValidUpto], map: "idx_vts_fitness_valid_upto")
+  @@index([pollutionValidUpto], map: "idx_vts_pollution_valid_upto")
+  @@index([permitValidUpto], map: "idx_vts_permit_valid_upto")
+  @@index([nextFollowUp], map: "idx_vts_next_follow_up")
+  @@index([assignedExecutive], map: "idx_vts_assigned_executive")
+  @@map("vehicle_trip_summary")
+}
+
+model ScraperRunState {
+  id                   String   @id
+  lastStartedAt        DateTime? @map("last_started_at") @db.Timestamptz(6)
+  lastEndedAt          DateTime? @map("last_ended_at") @db.Timestamptz(6)
+  lastSuccess          Boolean? @map("last_success")
+  lastFromDate         String?  @map("last_from_date")
+  lastToDate           String?  @map("last_to_date")
+  lastError            String?  @map("last_error")
+  lastInsertedCount    Int      @default(0) @map("last_inserted_count")
+  lastDuplicateSkipped Int      @default(0) @map("last_duplicate_skipped")
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("scraper_run_state")
+}

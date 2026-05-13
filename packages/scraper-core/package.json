@@ -1,0 +1,36 @@
+{
+  "name": "@vahan360/scraper-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Selector registry + Playwright smoke utilities shared by Vahan360 scrape workers.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./playwright": {
+      "types": "./dist/playwrightSmoke.d.ts",
+      "default": "./dist/playwrightSmoke.js"
+    }
+  },
+  "files": [
+    "dist",
+    "portals"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@vahan360/contracts": "workspace:*",
+    "js-yaml": "^4.1.0",
+    "playwright-core": "^1.47.2"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.12.12",
+    "typescript": "^5.9.3"
+  }
+}
