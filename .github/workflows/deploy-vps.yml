@@ -30,7 +30,4 @@ jobs:
             git config --global --add safe.directory /opt/vahan360 || true
             git pull origin main
             docker compose up -d --build
-            docker compose run --rm backend npx prisma db push
-            docker compose run --rm backend npm run sync:user
             docker compose ps
-            curl -sS http://127.0.0.1:3001/api/health/pg || true

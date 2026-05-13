@@ -1,0 +1,19 @@
+# Build Docker images on GitHub (no VPS, no DB) — catch Dockerfile / lockfile breaks before merge.
+name: Verify Docker build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  compose-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose build
+        env:
+          # Satisfy compose interpolation; not used for image build layers.
+          JWT_SECRET: ci_verify_dummy_secret_min_32_chars_required_here
+        run: docker compose build

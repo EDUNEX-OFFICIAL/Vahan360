@@ -127,7 +127,9 @@ chmod +x scripts/seed-admin-docker.sh
 ./scripts/seed-admin-docker.sh
 ```
 
-Ya manually: `docker compose run --rm backend npx prisma db push` phir `docker compose run --rm backend npm run sync:user`. **Deploy VPS** GitHub workflow bhi har deploy ke baad yeh dono chalata hai.
+Ya manually: `docker compose run --rm backend npx prisma db push` phir `docker compose run --rm backend npm run sync:user`.
+
+**CI deploy workflow** sirf `git pull` + `docker compose up` chalata hai — `db push` / `sync:user` **yahan nahi**, kyunki galat `.env` vs purana Postgres volume par **P1000 (auth failed)** se poora deploy fail ho sakta hai. Pehle **`/opt/vahan360/.env`** ke `V360_POSTGRES_*` ko **us password ke saath match** karo jo volume pehli baar create hote waqt use hua tha (ya naya volume + consistent password).
 
 ---
 
