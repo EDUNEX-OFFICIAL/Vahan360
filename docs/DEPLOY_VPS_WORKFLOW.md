@@ -160,6 +160,19 @@ Ya one-shot: [`scripts/recreate-postgres-volume.sh`](../scripts/recreate-postgre
 
 **Path B ke baad:** browser se `admin` / `admin123` se login; `generate-token` **200** hona chahiye.
 
+**Auth / Prisma error-handling code change ke baad:** VPS par naya backend image ke liye `git pull origin main` + `docker compose up -d --build` (ya sirf `docker compose up -d --build backend`).
+
+**Verify (VPS par):**
+
+```bash
+curl -sS http://127.0.0.1:3001/api/health/pg
+curl -i -sS -X POST http://127.0.0.1:3001/api/auth/generate-token \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
+```
+
+DB misconfigured ho to pehle response **503** + lamba `error` message; theek hone ke baad **200** + `token`.
+
 ---
 
 ## 6) Windows se file copy (jab Git use na ho)
