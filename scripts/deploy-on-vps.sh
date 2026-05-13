@@ -6,4 +6,6 @@ cd "$REPO_DIR"
 git config --global --add safe.directory "$REPO_DIR" 2>/dev/null || true
 git pull origin main
 docker compose up -d --build
+docker compose run --rm backend npx prisma db push
+docker compose run --rm backend npm run sync:user
 docker compose ps

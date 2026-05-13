@@ -117,6 +117,18 @@ curl -s http://127.0.0.1/health
 
 Browser se: `http://YOUR_SERVER_IP/`
 
+### 5.1) Default admin (`admin` / `admin123`)
+
+Login 500 / empty DB ho to schema + default admin:
+
+```bash
+cd /opt/vahan360
+chmod +x scripts/seed-admin-docker.sh
+./scripts/seed-admin-docker.sh
+```
+
+Ya manually: `docker compose run --rm backend npx prisma db push` phir `docker compose run --rm backend npm run sync:user`. **Deploy VPS** GitHub workflow bhi har deploy ke baad yeh dono chalata hai.
+
 ---
 
 ## 6) Windows se file copy (jab Git use na ho)
