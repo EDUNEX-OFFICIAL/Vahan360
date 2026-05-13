@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 const STATS_SNAPSHOT_KEY = 'khanan_stats_snapshot_v1';
 const ALERT_HISTORY_KEY = 'khanan_alert_history_v1';
 

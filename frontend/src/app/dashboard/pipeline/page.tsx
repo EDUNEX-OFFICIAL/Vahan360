@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 type PipelineStatus = 'pending' | 'in-progress' | 'completed';
 
 const SPRING_STATUS_TO_PIPELINE: Record<string, PipelineStatus> = {

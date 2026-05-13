@@ -46,19 +46,18 @@ services:
       timeout: 5s
       retries: 5
 
-  # Frontend disabled - static UI via nginx
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   ports: []
-  #   environment:
-  #     - NODE_ENV=production
-  #   depends_on:
-  #     - backend
-  #   networks:
-  #     - spybot-network
-  #   restart: unless-stopped
+  # Next.js frontend (proxied by nginx on /)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - backend
+    networks:
+      - spybot-network
+    restart: unless-stopped
 
   # MongoDB disabled - use live Atlas
   # mongo:
@@ -88,6 +87,7 @@ services:
       - ./nginx/html:/usr/share/nginx/html:ro
     depends_on:
       - backend
+      - frontend
     networks:
       - spybot-network
     restart: unless-stopped

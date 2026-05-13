@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
 function loginErrorMessage(data: Record<string, unknown>, status: number): string {
   const msg =
@@ -62,7 +62,7 @@ export default function LoginPage() {
       router.replace('/dashboard/leads');
     } catch {
       setError(
-        'Cannot reach the API. Is the backend running on the same host as NEXT_PUBLIC_API_BASE_URL (default http://localhost:5000)?'
+        'Cannot reach the API. Ensure nginx proxies /api to the backend, or set NEXT_PUBLIC_API_BASE_URL to your API origin.'
       );
     } finally {
       setSubmitting(false);
