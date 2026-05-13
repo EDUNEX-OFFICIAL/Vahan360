@@ -81,6 +81,17 @@ V360_POSTGRES_PASSWORD=strong_unique_password
 V360_POSTGRES_DB=vahan360
 ```
 
+**`V360_POSTGRES_*` aur purana volume (align-env):** Postgres ka password **sirf tab set hota hai jab data directory pehli baar empty hoti hai**. Uske baad `/opt/vahan360/.env` mein `V360_POSTGRES_PASSWORD` badalne se disk par stored password **nahi** badalta — backend ka `DATABASE_URL` galat ho jata hai (Prisma **P1000**, login par **503**). **Do raaste:** (A) `.env` mein wahi user/password/db rakho jo volume create hote waqt the (compose default pehle `pass123` tha agar tumne tab override na kiya ho), ya (B) volume dubara banao — poora flow [§5.2](#52-post-apiauthgenerate-token--500--503-p1000--password-mismatch).
+
+### 3.1) VPS Docker Manager (Postgres container manually)
+
+Agar aap **docker compose ki jagah** panel se `postgres:15-alpine` container bana rahe ho:
+
+- **Volume:** `vahan360_pg_data:/var/lib/postgresql/data` — path **theek** hai (official data dir); isko badalne ki zaroorat nahi.
+- **Postgres image env:** official image **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`**, **`POSTGRES_DB`** padhti hai (first init). Sirf `V360_POSTGRES_*` naam rakhne se image **inhe ignore** karti hai jab tak koi map layer na ho. Ya to compose use karo (wo `V360_*` ko `POSTGRES_*` mein map karta hai), ya panel mein **teeno `POSTGRES_*`** explicitly set karo — values **wahi** hon jo backend use karega.
+- **Backend:** `JWT_SECRET` aur `DATABASE_URL` wala logic **backend** service / `/opt/vahan360/.env` par rahe; **`JWT_SECRET` Postgres container par mat lagao** — confusion aur leak risk.
+- **Port:** `15432:5432` ya `5432:5432` dono chal sakte hain; **credential mismatch** ka issue host port se related nahi.
+
 `JWT_SECRET` generate (VPS par):
 
 ```bash
@@ -139,7 +150,7 @@ Postgres data directory **pehli start** par `POSTGRES_PASSWORD` se lock ho jata 
 
 1. `/opt/vahan360/.env` mein `V360_POSTGRES_USER`, `V360_POSTGRES_PASSWORD`, `V360_POSTGRES_DB` **usi** value par set karo jis se volume pehle bana tha (zyada tar pehla deploy `pass123` default tha agar tumne tab kuch change na kiya ho).
 2. `docker compose up -d --force-recreate postgres backend`
-3. `curl -sS http://127.0.0.1:3001/api/health/pg` → `ok: true`
+3. `./scripts/verify-pg-health.sh` (ya `curl -sS http://127.0.0.1:3001/api/health/pg` → `ok: true`)
 4. Zarurat ho to `./scripts/seed-admin-docker.sh`
 
 **Path B — DB data disposable (fresh password)**
@@ -165,13 +176,20 @@ Ya one-shot: [`scripts/recreate-postgres-volume.sh`](../scripts/recreate-postgre
 **Verify (VPS par):**
 
 ```bash
+chmod +x scripts/verify-pg-health.sh
+./scripts/verify-pg-health.sh
+```
+
+Ya manually:
+
+```bash
 curl -sS http://127.0.0.1:3001/api/health/pg
 curl -i -sS -X POST http://127.0.0.1:3001/api/auth/generate-token \
   -H "Content-Type: application/json" \
   -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
 ```
 
-DB misconfigured ho to pehle response **503** + lamba `error` message; theek hone ke baad **200** + `token`.
+DB misconfigured ho to pehla response **503** + lamba `error` message; theek hone ke baad **200** + `token`.
 
 ---
 
