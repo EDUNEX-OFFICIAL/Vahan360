@@ -184,6 +184,17 @@ Is user ko **`/opt/vahan360`** par read/write chahiye (clone ya `chown -R deploy
 
 SSH **non-default port** ho to `.github/workflows/deploy-vps.yml` mein `appleboy/ssh-action` ke neeche `port: YOUR_PORT` add karo (default workflow mein port 22 assume hai).
 
+### 8.3b) GitHub Actions: `dial tcp …:22: i/o timeout`
+
+Matlab **runner se VPS par TCP 22** tak connection **banti hi nahi** (firewall / panel / galat `VPS_HOST`). Code fix se ye solve nahi hota.
+
+**Checklist:**
+
+1. **hPanel / Hostinger → VPS → Firewall (ya Security)** — inbound **TCP 22** allow ho (source **Anywhere** / `0.0.0.0/0` jab tak test kar rahe ho). Bahut VPS par default sirf limited rules hoti hain; **laptop se `ssh` chalna** = tumhara IP allow hai, **GitHub ka IP alag** hota hai.
+2. Server par: `ufw status` — **`22/tcp` ALLOW** (ya `OpenSSH`) hona chahiye agar UFW on ho.
+3. **Secret `VPS_HOST`** — sahi **public IPv4** (ya jo SSH hostname ho); typo / purana IP na ho.
+4. Optional: [GitHub Actions IP ranges](https://api.github.com/meta) (`actions` CIDRs) allowlist — ranges badal sakti hain; chhote setups ke liye **22 open + sirf SSH key auth** zyada practical hai.
+
 ### 8.4) Pehli baar verify (recommended order)
 
 1. VPS par pehle **manual** [§5](#5-pehli-deploy--db--app) complete karo taake `/opt/vahan360` + `.env` ready hon.
