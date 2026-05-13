@@ -13,8 +13,9 @@ function loginErrorMessage(data: Record<string, unknown>, status: number): strin
     '';
   if (status === 401) {
     return (
-      'Invalid username or password. If the database is new, from the repo root run: ' +
-      'pnpm --filter spybot-backend run sync:user — then try admin / admin123 (defaults).'
+      'Invalid username or password. If the database is new: on the server run from repo root ' +
+      '(e.g. /opt/vahan360): docker compose run --rm backend npm run sync:user — or ./scripts/seed-admin-docker.sh. ' +
+      'Local monorepo: pnpm --filter spybot-backend run sync:user. Then try admin / admin123.'
     );
   }
   if (status >= 500) return msg || 'Sign in is temporarily unavailable. Please try again.';

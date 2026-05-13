@@ -140,6 +140,8 @@ chmod +x scripts/seed-admin-docker.sh
 
 Ya manually: `docker compose run --rm backend npx prisma db push` phir `docker compose run --rm backend npm run sync:user`.
 
+**VPS par `pnpm` mat dhoondo:** Ubuntu host par monorepo `pnpm` install karna zaroori **nahi**. Seed / sync hamesha **`docker compose run --rm backend ...`** se chalao (upar wale commands ya `seed-admin-docker.sh`).
+
 **CI deploy workflow** sirf `git pull` + `docker compose up` chalata hai — `db push` / `sync:user` **yahan nahi**, kyunki galat `.env` vs purana Postgres volume par **P1000 (auth failed)** se poora deploy fail ho sakta hai. Pehle **`/opt/vahan360/.env`** ke `V360_POSTGRES_*` ko **us password ke saath match** karo jo volume pehli baar create hote waqt use hua tha (ya naya volume + consistent password).
 
 ### 5.2) `POST /api/auth/generate-token` → 500 / 503 (P1000) — password mismatch
