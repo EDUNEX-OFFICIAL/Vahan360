@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { createIngestPrismaClient } from '@vahan360/db/ingest-client';
 import type { Prisma, PrismaClient } from '@vahan360/db';
 
-export type AuditLogListRow = {
+type AuditLogListRow = {
   id: string;
   action: string;
   resource: string | null;

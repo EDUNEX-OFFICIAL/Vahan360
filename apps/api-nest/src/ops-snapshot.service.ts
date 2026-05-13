@@ -2,14 +2,14 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { createIngestReadonlyPrismaClient } from '@vahan360/db/ingest-client-readonly';
 import type { PrismaClient } from '@vahan360/db';
 
-export type OpsSnapshotWorkerRow = {
+type OpsSnapshotWorkerRow = {
   workerId: string;
   queueName: string | null;
   status: string;
   lastHeartbeat: string;
 };
 
-export type OpsSnapshotQueueMetricRow = {
+type OpsSnapshotQueueMetricRow = {
   id: string;
   queueName: string;
   recordedAt: string;

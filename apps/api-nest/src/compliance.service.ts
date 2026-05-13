@@ -5,7 +5,7 @@ import type { Response } from 'express';
 
 import { updatedAtRangeClause } from './list-query.helpers';
 
-export type ComplianceSummaryRow = {
+type ComplianceSummaryRow = {
   id: string;
   vehicleRegNo: string;
   snapshot: unknown;

@@ -681,7 +681,7 @@ class BrowserAutomationService {
             };
 
             pageBatch.push(khananData);
-          } catch (error) {
+          } catch (_error) {
             log.warn({ msg: 'khanan.stale_element_row', row: i });
           }
         }
@@ -742,7 +742,7 @@ class BrowserAutomationService {
 
       await page.evaluate((btn) => btn.scrollIntoView(), button);
       await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => null),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: navTimeout }).catch(() => null),
         page.evaluate((btn) => btn.click(), button),
       ]);
       await this.waitNetworkIdle(page, 10_000);
@@ -766,7 +766,7 @@ class BrowserAutomationService {
           if (dialog) dialog.remove();
         });
       }
-    } catch (error) {
+    } catch (_error) {
       // No alert present
     }
   }
@@ -828,7 +828,7 @@ class BrowserAutomationService {
         return selected ? selected.textContent : 'N/A';
       }, select);
       return value;
-    } catch (error) {
+    } catch (_error) {
       return 'N/A';
     }
   }

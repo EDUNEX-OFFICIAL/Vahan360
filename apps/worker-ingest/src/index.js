@@ -281,7 +281,8 @@ function childIngestTypeForStep(step) {
  */
 function stripForTargetQueue(data) {
   if (!data || typeof data !== "object") return {};
-  const { failedReason, dlqMeta, target, ...rest } = data;
+  const { failedReason: _failedReason, dlqMeta: _dlqMeta, target: _target, ...rest } =
+    data;
   return { ...rest };
 }
 

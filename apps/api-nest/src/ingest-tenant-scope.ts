@@ -1,8 +1,8 @@
 import type { Prisma } from '@vahan360/db';
 
-export const INGEST_DEFAULT_TENANT_SLUG = 'default';
+const INGEST_DEFAULT_TENANT_SLUG = 'default';
 
-export type TenantScopedJobFilter = Prisma.ScrapeJobWhereInput;
+type TenantScopedJobFilter = Prisma.ScrapeJobWhereInput;
 
 /** Normalize slug; empty becomes `default`. */
 export function normalizeTenantSlug(raw: string | undefined | null): string {

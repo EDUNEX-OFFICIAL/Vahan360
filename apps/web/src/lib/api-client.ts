@@ -1,7 +1,7 @@
 /** Pre-cookie-era localStorage key; split so CI `git grep spybot_*token` stays clean on source bytes. */
 export const LEGACY_JWT_STORAGE_KEY = `spybot_${'token'}` as const;
 const LEGACY_JWT_LOCAL_KEYS = [LEGACY_JWT_STORAGE_KEY] as const;
-export const SPYBOT_SESSION_MARKER = '__cookie_session__';
+const SPYBOT_SESSION_MARKER = '__cookie_session__';
 const CSRF_COOKIE_NAME = 'spybot_csrf';
 
 /** Shared copy for Nest v2 stub pages when session is missing. */
@@ -22,7 +22,7 @@ export function apiUrl(path: string): string {
   return `${base}${p}`;
 }
 
-export type SpybotAuthHeaderOptions = {
+type SpybotAuthHeaderOptions = {
   /** Sets Content-Type: application/json */
   json?: boolean;
   /** Sets Accept: application/json */
@@ -44,7 +44,7 @@ function readCookie(name: string): string | null {
   return null;
 }
 
-export function hasSpybotSession(): boolean {
+function hasSpybotSession(): boolean {
   return Boolean(readCookie(CSRF_COOKIE_NAME));
 }
 

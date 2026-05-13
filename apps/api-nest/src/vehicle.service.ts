@@ -7,7 +7,7 @@ import {
 } from './ingest-tenant-scope';
 import { getCachedSummary, setCachedSummary } from './vehicle-cache';
 
-export type VehicleSummaryResponse =
+type VehicleSummaryResponse =
   | {
       status: 'ok';
       data: {
@@ -20,9 +20,9 @@ export type VehicleSummaryResponse =
   | { status: 'not_found'; regNorm: string }
   | { status: 'not_implemented'; reason: string };
 
-export type VehicleRiskTier = 'low' | 'medium' | 'high';
+type VehicleRiskTier = 'low' | 'medium' | 'high';
 
-export type VehicleRiskResponse =
+type VehicleRiskResponse =
   | {
       regNorm: string;
       status: 'ok';
@@ -58,14 +58,14 @@ export type VehicleRiskResponse =
       asOf: string;
     };
 
-export type VehicleTimelineEventRow = {
+type VehicleTimelineEventRow = {
   id: string;
   type: string;
   occurredAt: string;
   payload: unknown;
 };
 
-export type VehicleTimelineResponse =
+type VehicleTimelineResponse =
   | { status: 'ok'; regNorm: string; events: VehicleTimelineEventRow[] }
   | { status: 'not_implemented'; regNorm: string; reason: string };
 

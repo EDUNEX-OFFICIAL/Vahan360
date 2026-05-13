@@ -15,7 +15,7 @@ export type VehicleTimelineResponse =
   | { status: "ok"; regNorm: string; events: VehicleTimelineEvent[] }
   | { status: "not_implemented"; regNorm: string; reason: string };
 
-export type VehicleRiskTier = "low" | "medium" | "high";
+type VehicleRiskTier = "low" | "medium" | "high";
 
 /** Nest `GET /vehicle/:regNorm/risk` — heuristic from compliance snapshot when available. */
 export type VehicleRiskAssessment =

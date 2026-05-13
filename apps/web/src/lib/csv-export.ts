@@ -10,7 +10,7 @@
  *   });
  */
 
-export interface CsvExportOptions {
+interface CsvExportOptions {
   filename: string;
   /** Column header labels in order. */
   columns: string[];

@@ -4,7 +4,7 @@ import type { Prisma, PrismaClient } from '@vahan360/db';
 import { rawRowsLinkedToJobTenantWhere } from './ingest-tenant-scope';
 import { capturedAtRangeClause } from './list-query.helpers';
 
-export type RawPermitExpiringRow = {
+type RawPermitExpiringRow = {
   id: string;
   scrapeJobId: string | null;
   contentHash: string;

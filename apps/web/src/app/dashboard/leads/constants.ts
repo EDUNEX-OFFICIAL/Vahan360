@@ -1,10 +1,6 @@
 import type { ColumnDefinition, LeadFilters } from './types';
-import {
-  SPRING_STATUS_TO_PIPELINE,
-  type PipelineTabStatus,
-} from '@/lib/status';
+import { SPRING_STATUS_TO_PIPELINE } from '@/lib/status';
 
-export type { PipelineTabStatus };
 export { SPRING_STATUS_TO_PIPELINE };
 
 export const initialFilters: LeadFilters = {

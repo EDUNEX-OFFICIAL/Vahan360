@@ -49,7 +49,7 @@ function getClient(): IORedis | null {
   return _client;
 }
 
-export function vehicleSummaryTtlSeconds(): number {
+function vehicleSummaryTtlSeconds(): number {
   const raw = process.env.VEHICLE_SUMMARY_TTL_SECONDS?.trim();
   const n = raw ? parseInt(raw, 10) : NaN;
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_TTL_SEC;

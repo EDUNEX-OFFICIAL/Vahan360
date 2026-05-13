@@ -33,6 +33,8 @@ turbo.json / pnpm-workspace.yaml   Turborepo pipeline (build/lint/dev/test/start
 
 > **Convention:** runnable services live under **`apps/*`**, reusable workspace libraries under **`packages/*`**, and cluster/infra assets under **`deploy/*`** (plus the root `docker-compose.yml`, `nginx/`, and `docker/` dev notes). New services should add a folder under `apps/` with its own `Dockerfile` referenced from compose / CI / Helm — keep packages free of Dockerfiles.
 
+**Why some folders sit next to `apps/` (not inside it):** `deploy/`, `docs/`, `nginx/`, and root compose files are **infrastructure and documentation**, not shipped Node services. The runnable UI and APIs live under **`apps/web`**, **`apps/api-express`**, **`apps/api-nest`**, and **`apps/worker-ingest`**. For a table + glossary (control plane vs Nest v2, dual Prisma), see **`ARCHITECTURE.md`** (“Repo layout” / “Glossary”).
+
 ## Running locally
 
 ### Prereqs
@@ -63,6 +65,8 @@ The ingest migration **does not** create Express `public` tables (`users`, `khan
 
 ```bash
 pnpm --filter @vahan360/api-express run prisma:push   # syncs public schema (users, etc.)
+# Fresh/local DB: if Prisma warns about `roles` rebuild (data loss), use instead:
+# pnpm --filter @vahan360/api-express run prisma:push:dev
 pnpm --filter @vahan360/api-express run sync:user     # default admin / admin123
 ```
 

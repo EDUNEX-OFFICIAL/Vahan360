@@ -3,7 +3,7 @@ import { createIngestReadonlyPrismaClient } from '@vahan360/db/ingest-client-rea
 import type { Prisma, PrismaClient } from '@vahan360/db';
 import { scrapeJobTenantWhere } from './ingest-tenant-scope';
 
-export type ScrapeJobListRow = {
+type ScrapeJobListRow = {
   id: string;
   kind: string;
   status: string;

@@ -4,7 +4,7 @@ import type { Prisma, PrismaClient } from '@vahan360/db';
 
 import { updatedAtRangeClause } from './list-query.helpers';
 
-export type ConsignersSummaryRow = {
+type ConsignersSummaryRow = {
   id: string;
   consignerKey: string;
   snapshot: unknown;

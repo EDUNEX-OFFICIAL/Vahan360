@@ -1,8 +1,8 @@
 import type { Request } from 'express';
 
-export const ACCESS_COOKIE_NAME = 'spybot_access';
+const ACCESS_COOKIE_NAME = 'spybot_access';
 
-export function extractBearerToken(req: Request): string | undefined {
+function extractBearerToken(req: Request): string | undefined {
   const raw = req.headers.authorization;
   if (typeof raw !== 'string') return undefined;
   const h = raw.trim();
@@ -11,7 +11,7 @@ export function extractBearerToken(req: Request): string | undefined {
   return t.length ? t : undefined;
 }
 
-export function extractCookie(req: Request, name: string): string | undefined {
+function extractCookie(req: Request, name: string): string | undefined {
   const cookieHeader = req.headers.cookie;
   if (typeof cookieHeader !== 'string' || cookieHeader.length === 0) {
     return undefined;
@@ -29,7 +29,7 @@ export function extractCookie(req: Request, name: string): string | undefined {
   return undefined;
 }
 
-export type ResolvedAccessToken =
+type ResolvedAccessToken =
   | { status: 'bearer_deprecated' }
   | { status: 'missing' }
   | { status: 'ok'; token: string };

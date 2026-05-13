@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { createIngestReadonlyPrismaClient } from '@vahan360/db/ingest-client-readonly';
 import type { PrismaClient } from '@vahan360/db';
 import { rawRowsLinkedToJobTenantWhere } from './ingest-tenant-scope';
-export type RawChallanListRow = {
+type RawChallanListRow = {
   id: string;
   scrapeJobId: string | null;
   contentHash: string;

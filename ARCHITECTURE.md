@@ -38,6 +38,25 @@ For the full per-block accounting (15 enterprise spec blocks × ✅ / 🟡 / ❌
 
 **Repo convention:** runnable products live under `apps/*`, reusable workspace libraries live under `packages/*`, and Docker/Helm/Kubernetes assets live under `deploy/*` or root compose files. App folders use kebab-case and package names use the `@vahan360/*` scope.
 
+### Repo layout: root vs `apps/` vs `packages/`
+
+| Tier | Examples | Why it is not under `apps/` |
+| --- | --- | --- |
+| **`apps/*`** | `web`, `api-express`, `api-nest`, `worker-ingest` | Long-running processes you **build, containerise, and deploy** (each has its own `Dockerfile`). |
+| **`packages/*`** | `contracts`, `db`, `scraper-core`, `browser-pool` | **Shared libraries** consumed via `workspace:*`; no standalone service binary. |
+| **Repo root & siblings** | `deploy/`, `docs/`, `docker/`, `nginx/`, `docker-compose.yml`, `ARCHITECTURE.md` | **Infra, compose, proxy snippets, and docs** — not Node deployables; Helm/CI reference these paths explicitly. |
+
+Frontend and backends **are** under `apps/` (`web` = UI; `api-express` / `api-nest` = HTTP APIs). Anything at repo root that looks like “extra backend” is usually **chart/compose/docs**, not a duplicate app tree.
+
+### Glossary (onboarding)
+
+| Term | Meaning |
+| --- | --- |
+| **Control plane (primary)** | Express — `apps/api-express`: JWT, `/api/v1/*`, BullMQ enqueue, Bull Board, `public` Prisma schema. |
+| **API v2 / Nest** | `apps/api-nest`: Helm default `api` image; health and ingest-oriented routes; reachable directly or via Express **`/api/v2` proxy** when `API_V2_PROXY_ENABLED` is set. |
+| **Worker** | `apps/worker-ingest`: consumes BullMQ jobs and writes ingest/system data. |
+| **`@vahan360/db`** | Prisma client for **`ingest` / `processed` / `system`** schemas — not the Express `public` app tables. |
+
 **Infra (reference):** `docker-compose.yml` (Postgres 5433, Redis, `api-express`, nginx), `deploy/helm/vahan360` (single-namespace chart; optional Redis/worker/api/nest), `deploy/compose/observability.docker-compose.yml` (Loki, Jaeger, etc.).
 
 ## Data planes (Prisma)

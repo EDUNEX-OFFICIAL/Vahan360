@@ -1,7 +1,7 @@
 import type { NestJwtUser } from './auth.types';
 
 /** Canonical role slugs (Express `users.roles` is Postgres `text[]`; legacy CSV still accepted in normalizer). */
-export const ROLE_SLUGS = ['ADMIN', 'ANALYST', 'OPS', 'USER'] as const;
+const ROLE_SLUGS = ['ADMIN', 'ANALYST', 'OPS', 'USER'] as const;
 
 export type KnownRoleSlug = (typeof ROLE_SLUGS)[number];
 
@@ -9,7 +9,7 @@ export type KnownRoleSlug = (typeof ROLE_SLUGS)[number];
 export type RoleSlug = KnownRoleSlug | (string & { readonly __brand?: never });
 
 /** Default when `roles` column is blank (no magic comma-string defaults at call sites). */
-export const DEFAULT_ROLE_SLUG: KnownRoleSlug = 'USER';
+const DEFAULT_ROLE_SLUG: KnownRoleSlug = 'USER';
 
 const ADMIN_PERMISSIONS = [
   '*',
@@ -45,9 +45,6 @@ const ANALYST_PERMISSIONS = [
 const USER_PERMISSIONS = ['scrape:read', 'vehicle:read', 'ingest:read'] as const;
 
 const KNOWN = new Set<string>(ROLE_SLUGS);
-
-/** Stable export for Swagger / docs. */
-export const RBAC_KNOWN_ROLE_SLUGS: readonly KnownRoleSlug[] = [...ROLE_SLUGS];
 
 /** Normalize DB `roles` (Postgres `text[]`, legacy comma-string, or null) → slug array. */
 export function normalizeRolesFromDb(raw: string | string[] | null | undefined): RoleSlug[] {
@@ -104,7 +101,7 @@ export function permissionsFromNormalizedRoles(roleList: readonly RoleSlug[]): s
 }
 
 /** JWT-only org / tenant bootstrap echo — not a persisted org directory. */
-export type JwtOrgEcho = {
+type JwtOrgEcho = {
   source: 'jwt_bootstrap';
   tenantId: string | null;
   parentTenantId: string | null;
@@ -124,7 +121,7 @@ export function orgEchoFromJwt(user: NestJwtUser): JwtOrgEcho[] {
   ];
 }
 
-export type PermissionDetailRow = {
+type PermissionDetailRow = {
   permission: string;
   grantedVia: 'role_derivation';
 };

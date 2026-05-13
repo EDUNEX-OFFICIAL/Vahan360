@@ -51,7 +51,7 @@ const authMiddleware = async (req, res, next) => {
       tokenVersion: user.tokenVersion
     };
     next();
-  } catch (ex) {
+  } catch (_ex) {
     res.status(401).json({ error: 'Invalid token.' });
   }
 };

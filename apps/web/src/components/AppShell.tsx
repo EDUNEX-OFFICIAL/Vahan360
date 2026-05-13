@@ -110,9 +110,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }) as typeof window.fetch;
   }, []);
 
-  // Phase D: one-time legacy localStorage token sweep.
-  // If the pre-cookie JWT key is still present, clear it and show a brief notice.
-  // Uses sessionStorage flag so we never loop on redirect.
+  // One-time sweep: clear legacy localStorage JWT key; sessionStorage avoids redirect loops.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
@@ -121,8 +119,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       if (!hasLegacy) return;
       clearSpybotToken();
       sessionStorage.setItem(MIGRATION_DONE_KEY, '1');
-      setShowMigrationBanner(true);
-      setTimeout(() => setShowMigrationBanner(false), 5000);
+      queueMicrotask(() => {
+        setShowMigrationBanner(true);
+        setTimeout(() => setShowMigrationBanner(false), 5000);
+      });
       // If no active cookie session on a protected page, push to login.
       if (!isLogin && !getSpybotToken()) {
         router.replace('/login');
@@ -149,7 +149,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setIsCheckingAuth(false);
+    queueMicrotask(() => setIsCheckingAuth(false));
   }, [isLogin, pathname, router]);
 
   if (isLogin) {
@@ -259,7 +259,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     const isVrn = /^[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{1,4}$/i.test(headerSearch.trim());
                     router.push(
                       isVrn
-                        ? `/dashboard/vehicle-intelligence?q=${q}`
+                        ? `/vehicle-intelligence?q=${q}`
                         : `/dashboard/leads?q=${q}`
                     );
                   }

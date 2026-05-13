@@ -3,7 +3,7 @@ import { createIngestReadonlyPrismaClient } from '@vahan360/db/ingest-client-rea
 import type { Prisma, PrismaClient } from '@vahan360/db';
 import { rawRowsLinkedToJobTenantWhere } from './ingest-tenant-scope';
 
-export type RawFitnessListRow = {
+type RawFitnessListRow = {
   id: string;
   scrapeJobId: string | null;
   contentHash: string;

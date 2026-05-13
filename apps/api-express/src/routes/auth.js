@@ -230,6 +230,16 @@ async function handleLogin(req, res) {
     console.error("Error generating token:", error);
     const code = error && error.code;
     const msg = String((error && error.message) || "");
+    if (
+      code === "P1001" ||
+      /Can't reach database server|Unable to connect to the database/i.test(msg)
+    ) {
+      return res.status(503).json({
+        error:
+          "Database is not reachable. Start Postgres (e.g. Docker Desktop → docker compose up -d postgres redis) and ensure DATABASE_URL points at it (compose uses host port 5433).",
+        details: error.message,
+      });
+    }
     if (code === "P2021" || /does not exist in the current database/i.test(msg)) {
       return res.status(503).json({
         error:

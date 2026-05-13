@@ -4,6 +4,7 @@
   "description": "Express control-plane API for Vahan360 ingest, auth, queues, and scrape-job enqueue.",
   "main": "src/app.js",
   "scripts": {
+    "lint": "eslint \"src/**/*.js\" \"scripts/**/*.js\"",
     "build": "node --check src/telemetry.js && node --check src/lib/activeTraceLogFields.js && node --check src/config/envSchema.js && node --check src/lib/authAllowBearer.js && node --check src/middleware/auth.js && node --check src/routes/auth.js && node --check src/app.js && node --check src/lib/logger.js && node --check src/lib/metrics.js && node --check src/middleware/requestContext.js && node --check src/middleware/observability.js && node --check src/lib/ingestQueue.js && node --check src/lib/bullBoardAdmin.js && node --check src/lib/redisCache.js && node --check src/utils/scrapeDate.js && node --check src/utils/scrapeRangeValidation.js && node --check src/routes/scrapeJobs.js && node --check src/routes/queues.js && node --check src/routes/workers.js && node --check src/lib/openapi.js",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
@@ -11,6 +12,7 @@
     "jwt:secret": "node scripts/generate-jwt-secret.js",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
+    "prisma:push:dev": "prisma db push --accept-data-loss",
     "prisma:seed:sample": "node scripts/prisma-sample-seed.js",
     "test": "jest"
   },
@@ -39,6 +41,9 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
     "jest": "^29.7.0",
     "nodemon": "^3.0.2",
     "prisma": "^6.15.0"

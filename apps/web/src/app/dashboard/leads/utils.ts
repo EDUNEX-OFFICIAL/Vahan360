@@ -41,7 +41,7 @@ export function toSingleDayRange(date: Date | null): { from: Date; to: Date } | 
   return { from, to };
 }
 
-export function getCsvValue(row: NormalizedVehicle, serial: number, header: string): string {
+function getCsvValue(row: NormalizedVehicle, serial: number, header: string): string {
   const created = row.createdAt || row.updatedAt;
   const dueDate = safeDate(row.insuranceDueDate || row.nextFollowUp);
   const permitDate = safeDate(row.permitValidUpto);

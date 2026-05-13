@@ -10,15 +10,7 @@
 const enabled =
   process.env.OTEL_ENABLED === 'true' || process.env.OTEL_ENABLED === '1';
 
-export function isOtelEnabled(): boolean {
-  return enabled;
-}
-
 let _shutdown: (() => Promise<void>) | null = null;
-
-export async function shutdownTelemetry(): Promise<void> {
-  if (_shutdown) await _shutdown();
-}
 
 if (enabled) {
   if (

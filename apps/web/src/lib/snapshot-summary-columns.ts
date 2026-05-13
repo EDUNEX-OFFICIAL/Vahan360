@@ -1,7 +1,7 @@
 /**
  * `Processed*` summary rows store aggregates inside `snapshot` JSON (ETL / legacy shapes).
  */
-export function snapshotObject(snapshot: unknown): Record<string, unknown> | null {
+function snapshotObject(snapshot: unknown): Record<string, unknown> | null {
   if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
     return snapshot as Record<string, unknown>;
   }
