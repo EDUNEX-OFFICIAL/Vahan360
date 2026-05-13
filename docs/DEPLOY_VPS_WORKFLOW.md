@@ -137,14 +137,80 @@ scp "D:\path\to\local\file" root@YOUR_SERVER_IP:/opt/vahan360/
 
 ---
 
+## 8) GitHub Actions — push / manual se VPS auto deploy (SSH)
+
+Repo mein workflow: [`deploy-vps.yml`](../.github/workflows/deploy-vps.yml).  
+`main` par **push** hone par ya **Actions → Deploy VPS → Run workflow** (`workflow_dispatch`) se VPS par `git pull` + `docker compose up -d --build` chalega.
+
+### 8.1) VPS par deploy SSH key (recommended: alag key, sirf deploy)
+
+**Apne laptop par** (ya VPS par) key banao — password empty chhod sakte ho:
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-vahan360-deploy" -f ./gha-vahan360-deploy -N ""
+```
+
+- **Public key** (`gha-vahan360-deploy.pub`) ko VPS par user ke `~/.ssh/authorized_keys` mein append karo jisse Actions login karega (`root` ya dedicated user).
+- **Private key** (`gha-vahan360-deploy`) ka **poora** content (including `BEGIN` / `END` lines) GitHub Secret `VPS_SSH_PRIVATE_KEY` mein paste karo.
+
+**Dedicated user (optional, zyada safe):**
+
+```bash
+adduser --disabled-password deploy
+usermod -aG docker deploy
+mkdir -p /home/deploy/.ssh
+chmod 700 /home/deploy/.ssh
+# public key yahan append karo:
+nano /home/deploy/.ssh/authorized_keys
+chmod 600 /home/deploy/.ssh/authorized_keys
+chown -R deploy:deploy /home/deploy/.ssh
+```
+
+Is user ko **`/opt/vahan360`** par read/write chahiye (clone ya `chown -R deploy:deploy /opt/vahan360`), taake `git pull` + `docker compose` chal sake.
+
+### 8.2) SSH hardening (short)
+
+- `PermitRootLogin prohibit-password` ya `no` + sirf key auth.
+- `PasswordAuthentication no`.
+- `fail2ban` install karna worthwhile hai brute-force ke liye: `apt install -y fail2ban`.
+
+### 8.3) GitHub repo Secrets (Settings → Secrets and variables → Actions)
+
+| Secret | Example / note |
+|--------|----------------|
+| `VPS_HOST` | `82.29.160.50` ya domain |
+| `VPS_USER` | `root` ya `deploy` |
+| `VPS_SSH_PRIVATE_KEY` | OpenSSH private key **full PEM** (multiline) |
+
+SSH **non-default port** ho to `.github/workflows/deploy-vps.yml` mein `appleboy/ssh-action` ke neeche `port: YOUR_PORT` add karo (default workflow mein port 22 assume hai).
+
+### 8.4) Pehli baar verify (recommended order)
+
+1. VPS par pehle **manual** [§5](#5-pehli-deploy--db--app) complete karo taake `/opt/vahan360` + `.env` ready hon.
+2. GitHub par Secrets set karo.
+3. **Actions** tab → **Deploy VPS** → **Run workflow** (manual). Logs green hon tab hi `push` par auto deploy bharosemand hai.
+4. **Private repo:** VPS par `git clone` / `git pull` ke liye GitHub access hona chahiye (repo Deploy key read-only, ya `https` + credential helper, ya SSH clone URL + deploy key).
+
+### 8.5) Manual same commands (server par)
+
+[scripts/deploy-on-vps.sh](../scripts/deploy-on-vps.sh) — optional helper:
+
+```bash
+chmod +x /opt/vahan360/scripts/deploy-on-vps.sh
+/opt/vahan360/scripts/deploy-on-vps.sh
+```
+
+---
+
 ## Quick checklist (har deploy)
 
 | Step | Command / action |
 |------|-------------------|
-| 1 | `cd /opt/vahan360 && git pull origin main` |
-| 2 | `.env` check (missing vars nahi) |
-| 3 | `docker compose up -d --build` |
-| 4 | `docker compose ps` + `/health` |
+| Auto | `main` par push → GitHub Actions **Deploy VPS** (Secrets set hon) |
+| Manual | `cd /opt/vahan360 && git pull origin main` |
+| | `.env` check (missing vars nahi) |
+| | `docker compose up -d --build` |
+| | `docker compose ps` + `/health` |
 
 ---
 

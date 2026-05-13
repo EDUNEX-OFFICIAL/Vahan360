@@ -1,0 +1,31 @@
+# Deploy to VPS over SSH (Option A). Configure GitHub repo Secrets — see docs/DEPLOY_VPS_WORKFLOW.md §8.
+name: Deploy VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: deploy-vps-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH — git pull + docker compose rebuild
+        uses: appleboy/ssh-action@v1.2.4
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_PRIVATE_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd /opt/vahan360
+            git config --global --add safe.directory /opt/vahan360 || true
+            git pull origin main
+            docker compose up -d --build
+            docker compose ps
