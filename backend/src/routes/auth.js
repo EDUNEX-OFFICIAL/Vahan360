@@ -94,6 +94,14 @@ router.post('/generate-token', async (req, res) => {
     res.json(buildSpringStyleTokenResponse(updated));
   } catch (error) {
     console.error('Error generating token:', error);
+    const prismaCode = error && (error.code || error.errorCode);
+    if (prismaCode === 'P1000' || prismaCode === 'P1001' || prismaCode === 'P1017') {
+      return res.status(503).json({
+        error:
+          'Database unavailable or credentials do not match this Postgres data volume. Align V360_POSTGRES_* in /opt/vahan360/.env with the password used when the volume was first created, or recreate the volume. See docs/DEPLOY_VPS_WORKFLOW.md section 5.2.',
+        code: prismaCode,
+      });
+    }
     res.status(500).json({ error: 'Failed to generate token', details: error.message });
   }
 });
