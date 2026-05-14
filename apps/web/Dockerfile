@@ -29,7 +29,7 @@ COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./.next/static
 USER nextjs
 EXPOSE 3000
-# Hit App Router `/health` (stable 200). Avoid probing `/` — it server-redirects to `/login`.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=8 \
-  CMD node -e "require('http').get('http://127.0.0.1:3000/health',(r)=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+# TCP liveness only — HTTP probes can exceed Docker's short CMD timeout on first dynamic request.
+HEALTHCHECK --interval=10s --timeout=15s --start-period=120s --retries=10 \
+  CMD node -e "const t=setTimeout(()=>process.exit(1),12000);const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{clearTimeout(t);s.end();process.exit(0)});s.on('error',()=>{clearTimeout(t);process.exit(1)});"
 CMD ["node", "server.js"]
