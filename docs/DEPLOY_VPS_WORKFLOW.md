@@ -109,6 +109,18 @@ openssl rand -base64 48
 
 Reverse proxy ab root compose mein **`caddy`** service hai (`deploy/caddy/Caddyfile`). Purana `nginx/` folder reference / legacy docs mein ho sakta hai; compose usse bind nahi karta.
 
+### 4.1) `Bind for 0.0.0.0:80 failed` / port already allocated
+
+**nginx** service hataane ke baad purana container kabhi **orphan** reh jata hai (warning: `Found orphan containers ([vahan360-nginx-1])`) aur **:80** pakad leta hai — **Caddy** start nahi hota. Fix:
+
+```bash
+cd /opt/vahan360
+docker compose down --remove-orphans
+docker compose up -d --build
+```
+
+Zarurat ho to `docker ps -a` se naam dekh kar: `docker stop vahan360-nginx-1 && docker rm vahan360-nginx-1` (prefix `vahan360-` project directory se aa sakta hai).
+
 ---
 
 ## 5) Pehli deploy — DB + app
