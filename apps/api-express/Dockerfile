@@ -6,7 +6,7 @@ RUN corepack enable && corepack prepare pnpm@10.30.3 --activate
 ENV NODE_ENV=production
 
 WORKDIR /repo
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/api-express ./apps/api-express
 RUN pnpm install --frozen-lockfile

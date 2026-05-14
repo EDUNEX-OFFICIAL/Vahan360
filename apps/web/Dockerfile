@@ -5,7 +5,7 @@ WORKDIR /repo
 
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
 COPY packages ./packages
 COPY apps/web ./apps/web
 RUN pnpm install --frozen-lockfile
