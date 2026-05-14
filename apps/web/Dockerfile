@@ -27,12 +27,13 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs \
   && apk add --no-cache libc6-compat
-COPY --from=builder /repo/apps/web/public ./public
+# Monorepo standalone: traced root is .next/standalone with apps/web/server.js (not ./server.js here).
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/public ./apps/web/public
 USER nextjs
 EXPOSE 3000
 # TCP liveness only — HTTP probes can exceed Docker's short CMD timeout on first dynamic request.
 HEALTHCHECK --interval=10s --timeout=15s --start-period=120s --retries=10 \
   CMD node -e "const t=setTimeout(()=>process.exit(1),12000);const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{clearTimeout(t);s.end();process.exit(0)});s.on('error',()=>{clearTimeout(t);process.exit(1)});"
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]
