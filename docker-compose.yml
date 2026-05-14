@@ -74,7 +74,8 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
-      - api-express
+      api-express:
+        condition: service_healthy
     networks:
       - vahan360-network
     restart: unless-stopped

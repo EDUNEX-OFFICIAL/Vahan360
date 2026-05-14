@@ -199,6 +199,16 @@ if (envFlagTrue("API_V2_PROXY_ENABLED") && nestInternalUrl) {
 app.use("/api/auth", require("./routes/auth"));
 app.use("/auth", require("./routes/auth"));
 
+// Liveness only (no Redis/DB/worker). Use for Docker/K8s healthchecks and
+// compose `depends_on: condition: service_healthy` — `/health` may return 503 when degraded.
+app.get("/health/live", (_req, res) => {
+  res.status(200).json({
+    status: "live",
+    service: "vahan360-api-express",
+    ts: new Date().toISOString(),
+  });
+});
+
 // Postgres connectivity smoke (safe in production — only SELECT 1 / count)
 app.get("/api/health/pg", async (req, res) => {
   try {

@@ -113,7 +113,7 @@ api:
       memory: 1Gi
   livenessProbe:
     httpGet:
-      path: /health
+      path: /health/live
       port: http
     initialDelaySeconds: 20
     periodSeconds: 15
