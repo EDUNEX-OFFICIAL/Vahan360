@@ -37,22 +37,10 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      - HOST=0.0.0.0
     depends_on:
       api-express:
         condition: service_healthy
-    healthcheck:
-      # Port open = Node accepted the socket (avoids HTTP + Next cold-start vs Docker 5s default).
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const t=setTimeout(()=>process.exit(1),12000);const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{clearTimeout(t);s.end();process.exit(0)});s.on('error',()=>{clearTimeout(t);process.exit(1)});",
-        ]
-      interval: 10s
-      timeout: 15s
-      retries: 10
-      start_period: 120s
     networks:
       - vahan360-network
     restart: unless-stopped
@@ -107,8 +95,9 @@ services:
     depends_on:
       api-express:
         condition: service_healthy
+      # Do not gate nginx on web "healthy" — Next can be slow to bind; libc6-compat + image HEALTHCHECK still apply to web.
       web:
-        condition: service_healthy
+        condition: service_started
     networks:
       - vahan360-network
     restart: unless-stopped
