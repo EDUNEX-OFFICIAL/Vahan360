@@ -14,8 +14,13 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - SCRAPING_MODE=live
       - SCRAPING_URL=https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx
+      # Same Redis service for BullMQ + optional cache (see apps/api-express .env.example)
+      - REDIS_URL=redis://redis:6379
+      - BULLMQ_REDIS_URL=redis://redis:6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - vahan360-network
