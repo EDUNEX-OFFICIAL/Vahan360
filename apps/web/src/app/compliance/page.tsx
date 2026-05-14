@@ -14,6 +14,11 @@ import {
   NO_SPYBOT_JWT_MESSAGE,
   withApiCredentials,
 } from '@/lib/api-client';
+import {
+  logAndUserFacingHttpError,
+  logRequestDiagnostics,
+  userFacingHttpError,
+} from '@/lib/user-facing-errors';
 import { aggregateColumnsFromSnapshot } from '@/lib/snapshot-summary-columns';
 import { downloadCsv } from '@/lib/csv-export';
 import { chartMonthBucketsFromIso } from '@/lib/analytics-charts';
@@ -35,7 +40,7 @@ async function fetchCompliance(opts: {
 }): Promise<
   | { variant: 'ok'; rows: ComplianceSummaryApiRow[]; meta: { asOf?: string; totalApprox?: number } }
   | { variant: 'json'; raw: string }
-  | { variant: 'error'; msg: string; status?: number }
+  | { variant: 'error'; msg: string }
 > {
   const p = new URLSearchParams(opts.qp);
   const url = new URL(apiUrl('/api/v2/compliance/summary'));
@@ -60,11 +65,7 @@ async function fetchCompliance(opts: {
     }
 
     if (!res.ok) {
-      const msg =
-        (typeof data.error === 'string' && data.error) ||
-        (typeof data.message === 'string' && data.message) ||
-        `HTTP ${res.status}`;
-      return { variant: 'error', msg, status: res.status };
+      return { variant: 'error', msg: logAndUserFacingHttpError(res, data, url.pathname) };
     }
 
     if (data.status === 'ok' && Array.isArray(data.rows)) {
@@ -170,7 +171,8 @@ function CompliancePageBody() {
 
       if (!res.ok) {
         const msg = await res.text().catch(() => '');
-        throw new Error(msg.trim() || `HTTP ${res.status}`);
+        logRequestDiagnostics({ status: res.status, body: msg, path: url.pathname }, 'Compliance CSV export failed');
+        throw new Error(userFacingHttpError(res.status, msg));
       }
 
       const blob = await res.blob();
@@ -200,10 +202,6 @@ function CompliancePageBody() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Compliance</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Compliance summary</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            URL <code className="text-slate-400">&amp;q=…</code> maps to Nest <code className="text-slate-400">district</code>{' '}
-            query (= <code className="text-slate-400">vehicleRegNo</code> substring). Shareable bookmarks + TanStack keyed on search string.
-          </p>
         </div>
         <Link
           href="/dashboard/leads"
@@ -214,7 +212,7 @@ function CompliancePageBody() {
       </div>
 
       <section className="rounded-2xl border border-[#1f2937] bg-[#0b0f16]/80 p-6 shadow-lg">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Summary (v2)</h2>
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Summary</h2>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block min-w-0 flex-1 sm:max-w-[140px]">
@@ -230,13 +228,13 @@ function CompliancePageBody() {
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[320px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              q · vehicle registration contains
+              search
             </span>
             <input
               value={draftQ}
               onChange={(e) => setDraftQ(e.target.value)}
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
-              placeholder="e.g. MH"
+              placeholder="MH12"
             />
           </label>
           <button
@@ -245,7 +243,7 @@ function CompliancePageBody() {
             onClick={() => applyFilters()}
             className="shrink-0 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/30 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50"
           >
-            {loading ? 'Fetching…' : 'Apply URL & fetch'}
+            {loading ? 'Fetching…' : 'Fetch'}
           </button>
         </div>
 
@@ -257,12 +255,7 @@ function CompliancePageBody() {
 
         {sessionOk && q.data?.variant === 'error' && (
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <p>
-              {q.data.msg}
-              {typeof q.data.status === 'number' ? (
-                <span className="ml-2 font-mono text-xs text-amber-100/85">HTTP {q.data.status}</span>
-              ) : null}
-            </p>
+            <p>{q.data.msg}</p>
           </div>
         )}
 
@@ -355,7 +348,7 @@ function CompliancePageBody() {
         )}
 
         {okPack?.rows?.length === 0 && (
-          <p className="mt-4 text-sm text-slate-500">API returned status ok but no rows in this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {q.data?.variant === 'json' && (

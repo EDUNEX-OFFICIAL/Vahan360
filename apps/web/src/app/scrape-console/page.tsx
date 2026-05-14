@@ -6,7 +6,12 @@ import { useRouter } from 'next/navigation';
 import type { ScrapeJobKind } from '@vahan360/contracts';
 import { SCRAPE_JOB_KINDS } from '@vahan360/contracts';
 
-import { apiUrl, clearSpybotToken, getAuthHeaders, getSpybotToken } from '@/lib/api-client';
+import { apiUrl, clearSpybotToken, getAuthHeaders, getSpybotToken, NEST_V2_PROXY_NETWORK_ERROR } from '@/lib/api-client';
+import {
+  logAndUserFacingHttpError,
+  logRequestDiagnostics,
+  userFacingHttpError,
+} from '@/lib/user-facing-errors';
 
 const BULL_BOARD_URL = (process.env.NEXT_PUBLIC_BULL_BOARD_URL || '').trim();
 
@@ -40,11 +45,6 @@ export default function ScrapeConsolePage() {
   const [jobId, setJobId] = useState('');
   const [enqueueResult, setEnqueueResult] = useState<string | null>(null);
   const [enqueueError, setEnqueueError] = useState<string | null>(null);
-  const [enqueueErrorExtra, setEnqueueErrorExtra] = useState<{
-    status: number;
-    requestId?: string;
-    traceId?: string;
-  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [streamJobId, setStreamJobId] = useState('');
@@ -79,9 +79,9 @@ export default function ScrapeConsolePage() {
   }, [kind, correlationId, fromDate, toDate, vehicleRegNo, consignerKey]);
 
   const validateEnqueue = useCallback(() => {
-    if (!correlationId.trim()) return 'correlationId is required';
+    if (!correlationId.trim()) return 'Request ID zaroori / Reference ID is required.';
     if (kind === 'khanan_date_range') {
-      if (!fromDate || !toDate) return 'fromDate and toDate are required for khanan_date_range';
+      if (!fromDate || !toDate) return 'Dono dates chunein / Please pick both dates.';
     }
     if (
       kind === 'vehicle_permit_snapshot' ||
@@ -90,10 +90,10 @@ export default function ScrapeConsolePage() {
       kind === 'vehicle_registration_snapshot' ||
       kind === 'trip_intelligence_rollup'
     ) {
-      if (!vehicleRegNo.trim()) return 'vehicleRegNo is required for this kind';
+      if (!vehicleRegNo.trim()) return 'Vehicle number zaroori / Vehicle number is required.';
     }
     if (kind === 'consigner_digest') {
-      if (!consignerKey.trim()) return 'consignerKey is required for consigner_digest';
+      if (!consignerKey.trim()) return 'Consigner field zaroori / Consigner details are required.';
     }
     return null;
   }, [kind, correlationId, fromDate, toDate, vehicleRegNo, consignerKey]);
@@ -113,7 +113,6 @@ export default function ScrapeConsolePage() {
 
     setSubmitting(true);
     setEnqueueError(null);
-    setEnqueueErrorExtra(null);
     setEnqueueResult(null);
 
     const idem = idempotencyKey.trim() || crypto.randomUUID();
@@ -129,7 +128,6 @@ export default function ScrapeConsolePage() {
         body: JSON.stringify(buildEnqueueBody()),
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
 
       if (res.status === 401) {
         clearSpybotToken();
@@ -138,26 +136,14 @@ export default function ScrapeConsolePage() {
       }
 
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          (res.status === 429
-            ? 'Rate limited (429) — too many enqueue requests in the current window.'
-            : `HTTP ${res.status}`);
-        setEnqueueError(msg);
-        const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-        const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
-        setEnqueueErrorExtra({
-          status: res.status,
-          requestId: bodyRid || headerRid,
-          traceId: bodyTrace,
-        });
+        setEnqueueError(logAndUserFacingHttpError(res, data, '/api/v1/scrape-jobs'));
         return;
       }
 
       const jid = typeof data.jobId === 'string' ? data.jobId : '';
       if (!jid) {
-        setEnqueueError('Response missing jobId');
+        logRequestDiagnostics({ body: data, path: '/api/v1/scrape-jobs' }, 'Enqueue missing jobId');
+        setEnqueueError('Server se jawab poora nahi mila / Could not start the job.');
         return;
       }
 
@@ -165,7 +151,7 @@ export default function ScrapeConsolePage() {
       setStreamJobId(jid);
       setEnqueueResult(JSON.stringify({ ...data, idempotencyKey: idem }, null, 2));
     } catch {
-      setEnqueueError('Network error — is the backend running?');
+      setEnqueueError(NEST_V2_PROXY_NETWORK_ERROR);
     } finally {
       setSubmitting(false);
     }
@@ -180,13 +166,13 @@ export default function ScrapeConsolePage() {
   const startStream = async () => {
     const id = streamJobId.trim();
     if (!id) {
-      setStreamError('Enter a job UUID to stream');
+      setStreamError('Job ID zaroori / Job ID is required.');
       return;
     }
     const uuidRe =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (!uuidRe.test(id)) {
-      setStreamError('Invalid job id (expected UUID)');
+      setStreamError('Job ID format galat hai / Job ID format is not valid.');
       return;
     }
 
@@ -222,14 +208,21 @@ export default function ScrapeConsolePage() {
 
       if (!res.ok) {
         const t = await res.text();
-        setStreamError(t || `HTTP ${res.status}`);
+        let pathForLog = '/api/v1/scrape-jobs/…/stream';
+        try {
+          pathForLog = new URL(url).pathname;
+        } catch {
+          /* ignore */
+        }
+        logRequestDiagnostics({ status: res.status, body: t, path: pathForLog }, 'SSE stream error');
+        setStreamError(userFacingHttpError(res.status, t));
         setStreaming(false);
         return;
       }
 
       const reader = res.body?.getReader();
       if (!reader) {
-        setStreamError('No response body');
+        setStreamError(userFacingHttpError(502, null));
         setStreaming(false);
         return;
       }
@@ -274,7 +267,8 @@ export default function ScrapeConsolePage() {
     } catch (e: unknown) {
       const aborted = e instanceof DOMException && e.name === 'AbortError';
       if (!aborted) {
-        setStreamError(e instanceof Error ? e.message : String(e));
+        logRequestDiagnostics({ body: e instanceof Error ? e.message : String(e) }, 'SSE stream failed');
+        setStreamError(NEST_V2_PROXY_NETWORK_ERROR);
       }
     } finally {
       setStreaming(false);
@@ -294,23 +288,19 @@ export default function ScrapeConsolePage() {
       const res = await fetch(apiUrl('/api/v1/workers/status?limit=20'), {
         headers: getAuthHeaders(token),
       });
-      const data = await res.json().catch(() => ({}));
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (res.status === 401) {
         clearSpybotToken();
         router.replace('/login');
         return;
       }
       if (!res.ok) {
-        setWorkersError(
-          (typeof data === 'object' && data && 'error' in data && typeof data.error === 'string'
-            ? data.error
-            : null) || `HTTP ${res.status}`
-        );
+        setWorkersError(logAndUserFacingHttpError(res, data, '/api/v1/workers/status'));
         return;
       }
       setWorkersJson(JSON.stringify(data, null, 2));
     } catch {
-      setWorkersError('Failed to load worker status');
+      setWorkersError(NEST_V2_PROXY_NETWORK_ERROR);
     } finally {
       setWorkersLoading(false);
     }
@@ -332,10 +322,6 @@ export default function ScrapeConsolePage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">Scrape console</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Enqueue ingest jobs and watch SSE progress. Uses the same secure cookie session as the rest
-            of the app.
-          </p>
         </div>
         <Link
           href="/dashboard/leads"
@@ -369,7 +355,7 @@ export default function ScrapeConsolePage() {
 
           <label className="block md:col-span-2">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              correlationId (UUID)
+              correlationId
             </span>
             <div className="flex gap-2">
               <input
@@ -382,7 +368,7 @@ export default function ScrapeConsolePage() {
                 onClick={() => setCorrelationId(crypto.randomUUID())}
                 className="shrink-0 rounded-xl border border-[#1f2937] px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:border-indigo-500/40 hover:text-indigo-300"
               >
-                New UUID
+                New
               </button>
             </div>
           </label>
@@ -422,7 +408,7 @@ export default function ScrapeConsolePage() {
               <input
                 value={vehicleRegNo}
                 onChange={(e) => setVehicleRegNo(e.target.value)}
-                placeholder="e.g. BR01AB1234"
+                placeholder="BR01AB1234"
                 className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
               />
             </label>
@@ -436,7 +422,7 @@ export default function ScrapeConsolePage() {
               <input
                 value={consignerKey}
                 onChange={(e) => setConsignerKey(e.target.value)}
-                placeholder="GSTIN, portal id, or normalized slug"
+                placeholder=""
                 className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
               />
             </label>
@@ -444,7 +430,7 @@ export default function ScrapeConsolePage() {
 
           <label className="block md:col-span-2">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Idempotency-Key (optional — auto-generated if empty)
+              Idempotency-Key
             </span>
             <input
               value={idempotencyKey}
@@ -459,7 +445,7 @@ export default function ScrapeConsolePage() {
               disabled={submitting}
               className="rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/30 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50"
             >
-              {submitting ? 'Posting…' : 'POST /api/v1/scrape-jobs'}
+              {submitting ? 'Posting…' : 'Enqueue'}
             </button>
           </div>
         </form>
@@ -467,35 +453,17 @@ export default function ScrapeConsolePage() {
         {enqueueError && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <p>{enqueueError}</p>
-            {enqueueErrorExtra && (
-              <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-                {enqueueErrorExtra.status === 429 && (
-                  <p className="text-red-200/80">HTTP 429 — scrape enqueue rate limit</p>
-                )}
-                {enqueueErrorExtra.requestId && (
-                  <p>
-                    requestId: <span className="select-all">{enqueueErrorExtra.requestId}</span>
-                  </p>
-                )}
-                {enqueueErrorExtra.traceId && (
-                  <p>
-                    traceId: <span className="select-all">{enqueueErrorExtra.traceId}</span>
-                  </p>
-                )}
-                {BULL_BOARD_URL && (
-                  <p className="pt-1">
-                    <a
-                      href={BULL_BOARD_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-indigo-300 underline hover:text-indigo-200"
-                    >
-                      Open Bull Board
-                    </a>
-                    <span className="text-slate-500"> (login required in browser)</span>
-                  </p>
-                )}
-              </div>
+            {BULL_BOARD_URL && (
+              <p className="mt-3 text-sm">
+                <a
+                  href={BULL_BOARD_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-indigo-300 underline hover:text-indigo-200"
+                >
+                  Queue board
+                </a>
+              </p>
             )}
           </div>
         )}
@@ -520,16 +488,11 @@ export default function ScrapeConsolePage() {
         <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">
           SSE stream
         </h2>
-        <p className="mb-4 text-xs text-slate-500">
-          Uses <code className="text-slate-400">fetch</code> + stream reader (
-          <code className="text-slate-400">EventSource</code> cannot set custom CSRF headers in most
-          browsers).
-        </p>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={streamJobId}
             onChange={(e) => setStreamJobId(e.target.value)}
-            placeholder="job UUID"
+            placeholder=""
             className="min-w-[240px] flex-1 rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 font-mono text-xs text-slate-200 outline-none focus:border-indigo-500/50"
           />
           {!streaming ? (
@@ -588,7 +551,7 @@ export default function ScrapeConsolePage() {
             disabled={workersLoading}
             className="rounded-lg border border-[#1f2937] px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-400 hover:border-indigo-500/40 hover:text-indigo-300 disabled:opacity-50"
           >
-            {workersLoading ? 'Loading…' : 'GET /api/v1/workers/status'}
+            {workersLoading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
         {workersError && (
@@ -597,7 +560,7 @@ export default function ScrapeConsolePage() {
           </div>
         )}
         <pre className="max-h-56 overflow-auto rounded-xl border border-[#1f2937] bg-[#05070a] p-4 font-mono text-xs text-slate-400">
-          {workersJson ?? 'Click refresh to load `system.worker_status`.'}
+          {workersJson ?? 'Nothing to show yet.'}
         </pre>
       </section>
     </div>

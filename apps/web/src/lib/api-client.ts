@@ -4,12 +4,13 @@ const LEGACY_JWT_LOCAL_KEYS = [LEGACY_JWT_STORAGE_KEY] as const;
 const SPYBOT_SESSION_MARKER = '__cookie_session__';
 const CSRF_COOKIE_NAME = 'spybot_csrf';
 
-/** Shared copy for Nest v2 stub pages when session is missing. */
-export const NO_SPYBOT_JWT_MESSAGE = 'No active session — login first.';
+/** Shared copy when cookie session is missing (user-facing only). */
+export const NO_SPYBOT_JWT_MESSAGE =
+  'Pehle sign in karein / Please sign in first.';
 
-/** Typical fetch failure when Express or the v2 proxy is unreachable. */
+/** Typical fetch failure (user-facing only — no env or service names). */
 export const NEST_V2_PROXY_NETWORK_ERROR =
-  'Network error — is the backend running and API_V2_PROXY_ENABLED set if you need Nest?';
+  'Network issue — check your connection and try again / Network issue — check connection and try again.';
 
 export function getApiBaseUrl(): string {
   const raw = process.env.NEXT_PUBLIC_API_BASE_URL;

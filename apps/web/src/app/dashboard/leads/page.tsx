@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { apiFetch, clearSpybotToken, getSpybotToken } from '@/lib/api-client';
+import { apiFetch, clearSpybotToken, getSpybotToken, NO_SPYBOT_JWT_MESSAGE } from '@/lib/api-client';
+import { userFacingHttpError } from '@/lib/user-facing-errors';
 import type { VehicleStats, VehicleRecord, NormalizedVehicle, LeadFilters, TableFilterState } from './types';
 import { initialFilters, tableColumns, cardColorByIndex } from './constants';
 import { classifyVehicle, normalizeStatus, toSingleDayRange, safeDate, buildCsvBlob } from './utils';
@@ -43,7 +44,7 @@ export default function LeadsPage() {
     try {
       const token = getSpybotToken();
       if (!token) {
-        setError('Authentication required');
+        setError(NO_SPYBOT_JWT_MESSAGE);
         setLoading(false);
         return;
       }
@@ -54,7 +55,7 @@ export default function LeadsPage() {
         setStats(statsData);
       } else if (statsRes.status === 401) {
         clearSpybotToken();
-        setError('Authentication required');
+        setError(NO_SPYBOT_JWT_MESSAGE);
         setLoading(false);
         return;
       }
@@ -153,9 +154,12 @@ export default function LeadsPage() {
       const vehiclesRes = await apiFetch(`/api/vehicle/trip-summary?${params.toString()}`, token, { acceptJson: true });
       if (vehiclesRes.status === 401) {
         clearSpybotToken();
-        throw new Error('Authentication required');
+        throw new Error(NO_SPYBOT_JWT_MESSAGE);
       }
-      if (!vehiclesRes.ok) throw new Error('Failed to fetch lead records');
+      if (!vehiclesRes.ok) {
+        const errBody = await vehiclesRes.json().catch(() => ({}));
+        throw new Error(userFacingHttpError(vehiclesRes.status, errBody));
+      }
       const vehiclesData = await vehiclesRes.json() as { data: VehicleRecord[]; pagination: { pages: number; total: number } };
       setVehicles(Array.isArray(vehiclesData.data) ? vehiclesData.data : []);
       setTotalPages(Math.max(1, vehiclesData.pagination?.pages || 1));

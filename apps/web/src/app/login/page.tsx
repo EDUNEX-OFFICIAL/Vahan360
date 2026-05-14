@@ -3,22 +3,14 @@
 import Image from 'next/image';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiUrl, getApiBaseUrl } from '@/lib/api-client';
+import { apiUrl } from '@/lib/api-client';
+import { logRequestDiagnostics, networkErrorMessage, userFacingHttpError } from '@/lib/user-facing-errors';
 
 function loginErrorMessage(data: Record<string, unknown>, status: number): string {
-  const msg =
-    (typeof data.message === 'string' && data.message) ||
-    (typeof data.error === 'string' && data.error) ||
-    '';
   if (status === 401) {
-    return (
-      'Invalid username or password. If the database is new: on the server from repo root (e.g. /opt/vahan360) run: ' +
-      'docker compose run --rm api-express npm run sync:user — or ./scripts/seed-admin-docker.sh. ' +
-      'Local: pnpm --filter @vahan360/api-express run sync:user. Then try admin / admin123.'
-    );
+    return 'Galat username ya password / Invalid username or password.';
   }
-  if (status >= 500) return msg || 'Sign in is temporarily unavailable. Please try again.';
-  return msg || 'Unable to sign in right now. Please try again.';
+  return userFacingHttpError(status, data);
 }
 
 export default function LoginPage() {
@@ -33,7 +25,7 @@ export default function LoginPage() {
     e.preventDefault();
     const u = username.trim();
     if (!u || !password) {
-      setError('Username and password are required.');
+      setError('Username aur password dono zaroori / Username and password are required.');
       return;
     }
 
@@ -55,16 +47,13 @@ export default function LoginPage() {
       }
 
       if (data.type !== 'Bearer') {
-        setError('We could not sign you in. Please check your details and try again.');
+        setError('Sign in poora nahi ho saka / Sign-in could not be completed.');
         return;
       }
       router.replace('/dashboard/leads');
     } catch {
-      const base = getApiBaseUrl();
-      const where = base ? ` at ${base}` : ' (same-origin /api)';
-      setError(
-        `Cannot reach the API${where}. Check nginx /api → api-express, or set NEXT_PUBLIC_API_BASE_URL.`,
-      );
+      logRequestDiagnostics({ body: 'login fetch failed' }, 'Login network error');
+      setError(networkErrorMessage());
     } finally {
       setSubmitting(false);
     }
@@ -117,7 +106,6 @@ export default function LoginPage() {
           <h1 className="bg-gradient-to-r from-white via-indigo-100 to-indigo-400 bg-clip-text text-transparent text-2xl font-extrabold tracking-tight">
             SPYBOT VERIFACTS
           </h1>
-          <p className="mt-1.5 text-sm text-slate-500">Sign in to access your dashboard</p>
         </div>
 
         {/* Form */}
@@ -133,7 +121,7 @@ export default function LoginPage() {
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
+              placeholder=""
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-4 py-3 text-sm text-slate-200 outline-none transition placeholder:text-slate-700 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
             />
           </div>
@@ -151,7 +139,7 @@ export default function LoginPage() {
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+                placeholder=""
                 className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-4 py-3 pr-11 text-sm text-slate-200 outline-none transition placeholder:text-slate-700 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
               />
               <button

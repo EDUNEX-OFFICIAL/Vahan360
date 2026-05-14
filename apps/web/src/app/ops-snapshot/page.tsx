@@ -12,6 +12,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError, logRequestDiagnostics, userFacingHttpError } from '@/lib/user-facing-errors';
 
 type WorkerRow = {
   workerId: string;
@@ -32,31 +33,24 @@ export default function OpsSnapshotPage() {
   const [workers, setWorkers] = useState<WorkerRow[] | null>(null);
   const [queueMetrics, setQueueMetrics] = useState<QueueMetricRow[] | null>(null);
   const [asOf, setAsOf] = useState<string | null>(null);
-  const [notImplementedReason, setNotImplementedReason] = useState<string | null>(null);
+  const [opsSnapshotUnavailable, setOpsSnapshotUnavailable] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [errorExtra, setErrorExtra] = useState<{
-    status: number;
-    requestId?: string;
-    traceId?: string;
-  } | null>(null);
 
   const load = useCallback(async () => {
     const token = getSpybotToken();
     if (!token) {
       setLoading(false);
       setErrorMsg(NO_SPYBOT_JWT_MESSAGE);
-      setErrorExtra(null);
       setWorkers(null);
       setQueueMetrics(null);
       setAsOf(null);
-      setNotImplementedReason(null);
+      setOpsSnapshotUnavailable(false);
       return;
     }
 
     setLoading(true);
     setErrorMsg(null);
-    setErrorExtra(null);
-    setNotImplementedReason(null);
+    setOpsSnapshotUnavailable(false);
     setWorkers(null);
     setQueueMetrics(null);
     setAsOf(null);
@@ -69,7 +63,12 @@ export default function OpsSnapshotPage() {
         headers: getAuthHeaders(token, { acceptJson: true }),
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
+      let pathForLog = '/api/v2/ingest/ops/snapshot';
+      try {
+        pathForLog = new URL(url).pathname;
+      } catch {
+        /* ignore */
+      }
 
       if (res.status === 401) {
         clearSpybotToken();
@@ -78,26 +77,14 @@ export default function OpsSnapshotPage() {
       }
 
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          `HTTP ${res.status}`;
-        setErrorMsg(msg);
-        const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-        const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
-        setErrorExtra({
-          status: res.status,
-          requestId: bodyRid || headerRid,
-          traceId: bodyTrace,
-        });
+        setErrorMsg(logAndUserFacingHttpError(res, data, pathForLog));
         return;
       }
 
       if (data.status === 'not_implemented') {
+        logRequestDiagnostics({ path: pathForLog, body: data }, 'Ops snapshot not_implemented');
         setAsOf(typeof data.asOf === 'string' ? data.asOf : null);
-        setNotImplementedReason(
-          typeof data.reason === 'string' ? data.reason : 'not_implemented',
-        );
+        setOpsSnapshotUnavailable(true);
         return;
       }
 
@@ -108,7 +95,8 @@ export default function OpsSnapshotPage() {
         return;
       }
 
-      setErrorMsg('Unexpected response shape');
+      logRequestDiagnostics({ path: pathForLog, body: data }, 'Unexpected ops snapshot response');
+      setErrorMsg(userFacingHttpError(502, null));
     } catch {
       setErrorMsg(NEST_V2_PROXY_NETWORK_ERROR);
     } finally {
@@ -126,12 +114,6 @@ export default function OpsSnapshotPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Analytics</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Ops snapshot</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest <code className="text-slate-400">GET /api/v2/ingest/ops/snapshot</code> —{' '}
-            <code className="text-slate-400">system.worker_status</code> +{' '}
-            <code className="text-slate-400">system.queue_metrics</code> (Bearer{' '}
-            <code className="text-slate-400">Bearer JWT</code>).
-          </p>
         </div>
         <div className="flex flex-wrap gap-3">
           <button
@@ -154,31 +136,12 @@ export default function OpsSnapshotPage() {
       {errorMsg && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           <p>{errorMsg}</p>
-          {errorExtra && (
-            <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-              <p>
-                HTTP <span className="select-all">{errorExtra.status}</span>
-              </p>
-              {errorExtra.requestId && (
-                <p>
-                  requestId: <span className="select-all">{errorExtra.requestId}</span>
-                </p>
-              )}
-              {errorExtra.traceId && (
-                <p>
-                  traceId: <span className="select-all">{errorExtra.traceId}</span>
-                </p>
-              )}
-            </div>
-          )}
         </div>
       )}
 
-      {notImplementedReason && (
+      {opsSnapshotUnavailable && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <p className="font-semibold">not_implemented</p>
-          {asOf && <p className="mt-1 font-mono text-xs text-amber-200/80">asOf {asOf}</p>}
-          <p className="mt-2 text-amber-100/90">{notImplementedReason}</p>
+          <p>Ye snapshot abhi uplabdh nahi / This snapshot is not available yet.</p>
         </div>
       )}
 

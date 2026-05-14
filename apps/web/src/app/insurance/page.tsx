@@ -12,6 +12,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 
 const DEFAULT_DAYS = 30;
 
@@ -45,17 +46,11 @@ export default function InsurancePage() {
     totalApprox?: number;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [errorExtra, setErrorExtra] = useState<{
-    status: number;
-    requestId?: string;
-    traceId?: string;
-  } | null>(null);
 
   const fetchExpiring = async () => {
     const token = getSpybotToken();
     if (!token) {
       setErrorMsg(NO_SPYBOT_JWT_MESSAGE);
-      setErrorExtra(null);
       setJsonOut(null);
       setOkRows(null);
       setOkMeta(null);
@@ -64,7 +59,6 @@ export default function InsurancePage() {
 
     setLoading(true);
     setErrorMsg(null);
-    setErrorExtra(null);
     setJsonOut(null);
     setOkRows(null);
     setOkMeta(null);
@@ -80,7 +74,6 @@ export default function InsurancePage() {
         headers: getAuthHeaders(token, { acceptJson: true }),
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
 
       if (res.status === 401) {
         clearSpybotToken();
@@ -89,18 +82,7 @@ export default function InsurancePage() {
       }
 
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          `HTTP ${res.status}`;
-        setErrorMsg(msg);
-        const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-        const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
-        setErrorExtra({
-          status: res.status,
-          requestId: bodyRid || headerRid,
-          traceId: bodyTrace,
-        });
+        setErrorMsg(logAndUserFacingHttpError(res, data, url.pathname));
         return;
       }
 
@@ -127,12 +109,6 @@ export default function InsurancePage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Insurance</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Insurance expiring</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest ingest <code className="text-slate-400">RawInsurance</code> via Express{' '}
-            <code className="text-slate-400">/api/v2/insurance/expiring?days=30</code>. Bearer{' '}
-            <code className="text-slate-400">Bearer JWT</code> (default <code className="text-slate-400">days=30</code>,
-            clamped 1–365 by API).
-          </p>
         </div>
         <Link
           href="/dashboard/leads"
@@ -143,7 +119,7 @@ export default function InsurancePage() {
       </div>
 
       <section className="rounded-2xl border border-[#1f2937] bg-[#0b0f16]/80 p-6 shadow-lg">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Expiring (v2)</h2>
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Expiring</h2>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block min-w-0 flex-1 sm:max-w-[200px]">
@@ -171,23 +147,6 @@ export default function InsurancePage() {
         {errorMsg && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <p>{errorMsg}</p>
-            {errorExtra && (
-              <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-                <p>
-                  HTTP <span className="select-all">{errorExtra.status}</span>
-                </p>
-                {errorExtra.requestId && (
-                  <p>
-                    requestId: <span className="select-all">{errorExtra.requestId}</span>
-                  </p>
-                )}
-                {errorExtra.traceId && (
-                  <p>
-                    traceId: <span className="select-all">{errorExtra.traceId}</span>
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -241,7 +200,7 @@ export default function InsurancePage() {
         )}
 
         {okRows && okRows.length === 0 && (
-          <p className="mt-4 text-sm text-slate-500">API returned status ok but no rows in this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {jsonOut && (

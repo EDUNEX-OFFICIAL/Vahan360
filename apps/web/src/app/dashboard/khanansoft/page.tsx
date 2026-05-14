@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, useEffect } from 'react';
-import { apiFetch, clearSpybotToken, getSpybotToken } from '@/lib/api-client';
+import { apiFetch, clearSpybotToken, getSpybotToken, NO_SPYBOT_JWT_MESSAGE } from '@/lib/api-client';
 const STATS_SNAPSHOT_KEY = 'khanan_stats_snapshot_v1';
 const ALERT_HISTORY_KEY = 'khanan_alert_history_v1';
 
@@ -455,7 +455,7 @@ export default function Home() {
       } else if (response.status === 401) {
         clearSpybotToken();
         setHasSession(false);
-        setError('Authentication expired. Please sign in again.');
+        setError(NO_SPYBOT_JWT_MESSAGE);
       } else {
         setError('Failed to fetch khanan statistics');
       }
@@ -536,7 +536,7 @@ export default function Home() {
       if (response.status === 401) {
         clearSpybotToken();
         setHasSession(false);
-        setError('Authentication expired. Please sign in again.');
+        setError(NO_SPYBOT_JWT_MESSAGE);
         clearTrackedJob();
         return 'abort';
       }
@@ -659,7 +659,7 @@ export default function Home() {
             fetchFilteredPreview(token),
           ]);
         } else {
-          setError('Authentication required. Please sign in.');
+          setError(NO_SPYBOT_JWT_MESSAGE);
         }
       } catch (err) {
         console.error('Init error:', err);
@@ -687,7 +687,7 @@ export default function Home() {
       } else if (response.status === 401) {
         clearSpybotToken();
         setHasSession(false);
-        setError('Authentication expired. Please sign in again.');
+        setError(NO_SPYBOT_JWT_MESSAGE);
       } else if (response.status === 429) {
         pushToast('error', typeof data.error === 'string' ? data.error : 'Too many requests — try again shortly.');
       } else if (response.status === 400) {
@@ -728,7 +728,7 @@ export default function Home() {
       } else if (response.status === 401) {
         clearSpybotToken();
         setHasSession(false);
-        setError('Authentication expired. Please sign in again.');
+        setError(NO_SPYBOT_JWT_MESSAGE);
       } else if (response.status === 429) {
         pushToast('error', typeof data.error === 'string' ? data.error : 'Too many requests — try again shortly.');
       } else if (response.status === 400) {
@@ -770,7 +770,7 @@ export default function Home() {
     const token = getSpybotToken();
     if (!token) {
       setHasSession(false);
-      setError('Authentication required. Please sign in.');
+      setError(NO_SPYBOT_JWT_MESSAGE);
       return;
     }
     setRefreshing(true);

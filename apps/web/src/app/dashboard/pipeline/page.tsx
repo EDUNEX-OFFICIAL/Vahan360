@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { apiFetch, clearSpybotToken, getSpybotToken } from '@/lib/api-client';
+import { apiFetch, clearSpybotToken, getSpybotToken, NO_SPYBOT_JWT_MESSAGE, NEST_V2_PROXY_NETWORK_ERROR } from '@/lib/api-client';
 import {
   normalizeSpringPipelineStatus,
   type PipelineTabStatus,
@@ -64,7 +64,7 @@ export default function PipelinePage() {
     try {
       const token = getSpybotToken();
       if (!token) {
-        setError('Authentication required');
+        setError(NO_SPYBOT_JWT_MESSAGE);
         setLoading(false);
         return;
       }
@@ -83,13 +83,13 @@ export default function PipelinePage() {
       } else if (res.status === 401) {
         clearSpybotToken();
         setItems([]);
-        setError('Authentication expired. Please sign in again.');
+        setError(NO_SPYBOT_JWT_MESSAGE);
       } else {
-        setError('Failed to fetch pipeline data');
+        setError(NEST_V2_PROXY_NETWORK_ERROR);
       }
     } catch (err) {
       console.error(err);
-      setError('Connection error. Please try again.');
+      setError(NEST_V2_PROXY_NETWORK_ERROR);
     } finally {
       setLoading(false);
     }

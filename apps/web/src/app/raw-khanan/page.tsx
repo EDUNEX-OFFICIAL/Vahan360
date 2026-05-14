@@ -12,6 +12,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 
 const DEFAULT_LIMIT = 50;
 
@@ -45,18 +46,12 @@ export default function RawKhananPage() {
   } | null>(null);
   const [jsonOut, setJsonOut] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [errorExtra, setErrorExtra] = useState<{
-    status: number;
-    requestId?: string;
-    traceId?: string;
-  } | null>(null);
 
   const load = useCallback(async (limitParam: string) => {
     const token = getSpybotToken();
     if (!token) {
       setLoading(false);
       setErrorMsg(NO_SPYBOT_JWT_MESSAGE);
-      setErrorExtra(null);
       setRows(null);
       setMeta(null);
       setJsonOut(null);
@@ -65,7 +60,6 @@ export default function RawKhananPage() {
 
     setLoading(true);
     setErrorMsg(null);
-    setErrorExtra(null);
     setJsonOut(null);
     setRows(null);
     setMeta(null);
@@ -80,7 +74,6 @@ export default function RawKhananPage() {
         headers: getAuthHeaders(token, { acceptJson: true }),
       });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
 
       if (res.status === 401) {
         clearSpybotToken();
@@ -89,18 +82,7 @@ export default function RawKhananPage() {
       }
 
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          `HTTP ${res.status}`;
-        setErrorMsg(msg);
-        const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-        const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
-        setErrorExtra({
-          status: res.status,
-          requestId: bodyRid || headerRid,
-          traceId: bodyTrace,
-        });
+        setErrorMsg(logAndUserFacingHttpError(res, data, url.pathname));
         return;
       }
 
@@ -132,11 +114,6 @@ export default function RawKhananPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Analytics</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Raw Khanan</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest ingest <code className="text-slate-400">RawKhananRecord</code> via{' '}
-            <code className="text-slate-400">GET /api/v2/ingest/raw-khanan?limit=50</code> (Bearer{' '}
-            <code className="text-slate-400">Bearer JWT</code>).
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -182,23 +159,6 @@ export default function RawKhananPage() {
         {errorMsg && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <p>{errorMsg}</p>
-            {errorExtra && (
-              <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-                <p>
-                  HTTP <span className="select-all">{errorExtra.status}</span>
-                </p>
-                {errorExtra.requestId && (
-                  <p>
-                    requestId: <span className="select-all">{errorExtra.requestId}</span>
-                  </p>
-                )}
-                {errorExtra.traceId && (
-                  <p>
-                    traceId: <span className="select-all">{errorExtra.traceId}</span>
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -249,7 +209,7 @@ export default function RawKhananPage() {
         )}
 
         {rows && rows.length === 0 && !loading && (
-          <p className="mt-4 text-sm text-slate-500">No rows returned for this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {jsonOut && (

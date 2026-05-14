@@ -12,6 +12,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 
 export default function SelectorHealthPage() {
   const router = useRouter();
@@ -47,11 +48,13 @@ export default function SelectorHealthPage() {
       }
 
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          `HTTP ${res.status}`;
-        setErrorMsg(msg);
+        let pathForLog = '/api/v2/selectors/health';
+        try {
+          pathForLog = new URL(url).pathname;
+        } catch {
+          /* ignore */
+        }
+        setErrorMsg(logAndUserFacingHttpError(res, data, pathForLog));
         return;
       }
 
@@ -69,10 +72,6 @@ export default function SelectorHealthPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Read-only</p>
           <h1 className="mt-1 text-xl font-bold tracking-tight text-white">Selector registry health</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            <code className="text-slate-400">GET /api/v2/selectors/health</code> — YAML-backed portal list + version hints
-            (no Playwright run).
-          </p>
         </div>
         <Link href="/compliance" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">
           Compliance

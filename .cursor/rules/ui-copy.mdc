@@ -1,0 +1,32 @@
+---
+description: UI must avoid instructional copy; user-facing errors are plain language
+alwaysApply: true
+---
+
+# UI copy and errors
+
+## No instructional or guiding UI copy
+
+- Do not add tutorial paragraphs, API path callouts (`GET /api/...`), stack traces, or prose that explains implementation (sessions, proxies, env vars).
+- Avoid "click to…", "same session as…", and query-syntax helper lines meant for developers.
+- **Labels** name the field or action; **buttons** name the action (e.g. Reload, Fetch). That is not tutorial copy.
+- **Placeholders**: use empty placeholders or **format-only** examples (e.g. `2024-05-01`, `MH12AB1234`). Do not use sentence instructions like "Enter your username".
+
+## User-facing errors (plain language)
+
+- Show short, non-technical sentences only. No raw HTTP status in visible UI, no `requestId` / `traceId` / UUID dumps for end users.
+- Use shared helpers from `apps/web/src/lib/user-facing-errors.ts` (`userFacingHttpError`, `networkErrorMessage`, `logRequestDiagnostics`) instead of echoing `data.error` or `Error.message` directly when those may be technical.
+- Log technical details with `logRequestDiagnostics` (or `console.error` with structured context) for debugging; never rely on the DOM for that.
+
+## Examples
+
+```tsx
+// BAD — exposes API and instructions
+<p className="text-slate-500">GET /api/v2/foo — Bearer JWT required</p>
+setErrorMsg(`HTTP ${res.status} requestId=${id}`);
+
+// GOOD — title only or neutral subtitle omitted
+<h1>Raw Vehicle</h1>
+setErrorMsg(userFacingHttpError(res.status, data));
+logRequestDiagnostics({ status: res.status, requestId, traceId, body: data });
+```

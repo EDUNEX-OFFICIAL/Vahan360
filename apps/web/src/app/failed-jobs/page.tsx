@@ -13,12 +13,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
-
-type SliceErrorDiag = {
-  status: number;
-  requestId?: string;
-  traceId?: string;
-};
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 
 const DEFAULT_LIMIT = 50;
 
@@ -45,7 +40,7 @@ async function fetchFailedJobsSlice(opts: {
 }): Promise<
   | { variant: 'ok'; rows: FailedJobRow[]; meta: { asOf?: string; totalApprox?: number } }
   | { variant: 'json'; raw: string }
-  | { variant: 'error'; msg: string; extra: SliceErrorDiag }
+  | { variant: 'error'; msg: string }
 > {
   const { limit, queueName, orderBy, token, router } = opts;
   const url = new URL(apiUrl('/api/v2/system/failed-jobs'));
@@ -60,7 +55,6 @@ async function fetchFailedJobsSlice(opts: {
   });
 
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
 
   if (res.status === 401) {
     clearSpybotToken();
@@ -68,25 +62,13 @@ async function fetchFailedJobsSlice(opts: {
     return {
       variant: 'error',
       msg: NO_SPYBOT_JWT_MESSAGE,
-      extra: { status: res.status },
     };
   }
 
   if (!res.ok) {
-    const msg =
-      (typeof data.error === 'string' && data.error) ||
-      (typeof data.message === 'string' && data.message) ||
-      `HTTP ${res.status}`;
-    const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-    const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
     return {
       variant: 'error',
-      msg,
-      extra: {
-        status: res.status,
-        requestId: bodyRid || headerRid,
-        traceId: bodyTrace,
-      },
+      msg: logAndUserFacingHttpError(res, data, url.pathname),
     };
   }
 
@@ -135,10 +117,7 @@ export default function FailedJobsPage() {
         router,
       });
       if (result.variant === 'error') {
-        const err = Object.assign(new Error(result.msg), { diag: result.extra }) as Error & {
-          diag: SliceErrorDiag;
-        };
-        throw err;
+        throw new Error(result.msg);
       }
       return result;
     },
@@ -161,23 +140,13 @@ export default function FailedJobsPage() {
         throw new Error(NO_SPYBOT_JWT_MESSAGE);
       }
       if (!res.ok) {
-        const msg =
-          (typeof data.error === 'string' && data.error) ||
-          (typeof data.message === 'string' && data.message) ||
-          `HTTP ${res.status}`;
-        throw new Error(msg);
+        throw new Error(logAndUserFacingHttpError(res, data, `/api/v2/system/failed-jobs/${jobId}/replay`));
       }
       return data as { status?: string; replayed?: boolean; queueName?: string; bullJobId?: string };
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['v2-system-failed-jobs'] });
-      const qn = typeof data.queueName === 'string' ? data.queueName : '';
-      const bid = typeof data.bullJobId === 'string' ? data.bullJobId : '';
-      window.alert(
-        bid
-          ? `Replay queued (${qn || 'queue'}). Bull job id: ${bid}`
-          : `Replay queued (${qn || 'queue'}).`,
-      );
+      window.alert('Replay queue mein daal diya gaya / Replay was queued.');
     },
     onError: (e) => {
       window.alert(e instanceof Error ? e.message : NEST_V2_PROXY_NETWORK_ERROR);
@@ -195,7 +164,6 @@ export default function FailedJobsPage() {
     | null = null;
   let jsonOut: string | null = null;
   let errorMsg: string | null = null;
-  let errorExtra: { status: number; requestId?: string; traceId?: string } | null = null;
 
   if (!sessionOk && mounted) {
     errorMsg = NO_SPYBOT_JWT_MESSAGE;
@@ -214,8 +182,6 @@ export default function FailedJobsPage() {
   if (failedJobsQuery.isError && sessionOk && !loading) {
     if (qErr instanceof Error) {
       errorMsg = qErr.message;
-      const diag = (qErr as Error & { diag?: SliceErrorDiag }).diag;
-      if (diag) errorExtra = diag;
     } else {
       errorMsg = NEST_V2_PROXY_NETWORK_ERROR;
     }
@@ -227,16 +193,6 @@ export default function FailedJobsPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Analytics</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Failed jobs</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest <code className="text-slate-400">system.FailedJob</code> via{' '}
-            <code className="text-slate-400">GET /api/v2/system/failed-jobs?limit=50</code> (optional{' '}
-            <code className="text-slate-400">&amp;queueName=…</code>,{' '}
-            <code className="text-slate-400">&amp;orderBy=desc|asc</code>
-            , <code className="text-slate-400">Bearer JWT</code> · httpOnly cookie{' '}
-            <code className="text-slate-400">spybot_access</code>). Replay{' '}
-            <code className="text-emerald-300/90">ADMIN</code> only:
-            <code className="text-slate-400"> POST /api/v2/system/failed-jobs/:id/replay</code>.
-          </p>
         </div>
         <Link
           href="/audit-logs"
@@ -298,23 +254,6 @@ export default function FailedJobsPage() {
         {errorMsg && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <p>{errorMsg}</p>
-            {errorExtra && (
-              <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-                <p>
-                  HTTP <span className="select-all">{errorExtra.status}</span>
-                </p>
-                {errorExtra.requestId && (
-                  <p>
-                    requestId: <span className="select-all">{errorExtra.requestId}</span>
-                  </p>
-                )}
-                {errorExtra.traceId && (
-                  <p>
-                    traceId: <span className="select-all">{errorExtra.traceId}</span>
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -384,7 +323,7 @@ export default function FailedJobsPage() {
         )}
 
         {rows && rows.length === 0 && !loading && sessionOk && !errorMsg && (
-          <p className="mt-4 text-sm text-slate-500">No rows returned for this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {jsonOut && (

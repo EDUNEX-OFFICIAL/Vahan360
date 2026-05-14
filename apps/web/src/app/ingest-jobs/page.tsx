@@ -14,6 +14,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 import { StatusBarChart } from '@/components/StatusBarChart';
 import { downloadCsv } from '@/lib/csv-export';
 
@@ -26,12 +27,6 @@ type ScrapeJobRow = {
   priority: number;
   createdAt: string;
   updatedAt: string;
-};
-
-type SliceErrorDiag = {
-  status: number;
-  requestId?: string;
-  traceId?: string;
 };
 
 async function fetchScrapeJobsSlice(opts: {
@@ -54,7 +49,7 @@ async function fetchScrapeJobsSlice(opts: {
       };
     }
   | { variant: 'json'; raw: string }
-  | { variant: 'error'; msg: string; extra: SliceErrorDiag }
+  | { variant: 'error'; msg: string }
 > {
   const { limit, statusParam, queryParam, token, router } = opts;
 
@@ -69,7 +64,6 @@ async function fetchScrapeJobsSlice(opts: {
   const res = await apiFetch(`${url.pathname}${url.search}`, token, { acceptJson: true });
 
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  const headerRid = res.headers.get('x-request-id')?.trim() || undefined;
 
   if (res.status === 401) {
     clearSpybotToken();
@@ -77,25 +71,13 @@ async function fetchScrapeJobsSlice(opts: {
     return {
       variant: 'error',
       msg: NO_SPYBOT_JWT_MESSAGE,
-      extra: { status: res.status },
     };
   }
 
   if (!res.ok) {
-    const msg =
-      (typeof data.error === 'string' && data.error) ||
-      (typeof data.message === 'string' && data.message) ||
-      `HTTP ${res.status}`;
-    const bodyRid = typeof data.requestId === 'string' ? data.requestId : undefined;
-    const bodyTrace = typeof data.traceId === 'string' ? data.traceId : undefined;
     return {
       variant: 'error',
-      msg,
-      extra: {
-        status: res.status,
-        requestId: bodyRid || headerRid,
-        traceId: bodyTrace,
-      },
+      msg: logAndUserFacingHttpError(res, data, url.pathname),
     };
   }
 
@@ -188,10 +170,7 @@ function IngestJobsPageBody() {
         router,
       });
       if (result.variant === 'error') {
-        const err = Object.assign(new Error(result.msg), { diag: result.extra }) as Error & {
-          diag: SliceErrorDiag;
-        };
-        throw err;
+        throw new Error(result.msg);
       }
       return result;
     },
@@ -203,7 +182,6 @@ function IngestJobsPageBody() {
   const jsonOut = ingestQuery.data?.variant === 'json' ? ingestQuery.data.raw : null;
 
   let errorMsg: string | null = null;
-  let errorExtra: SliceErrorDiag | null = null;
   if (!sessionOk && mounted) {
     errorMsg = NO_SPYBOT_JWT_MESSAGE;
   }
@@ -211,8 +189,6 @@ function IngestJobsPageBody() {
     const e = ingestQuery.error;
     if (e instanceof Error) {
       errorMsg = e.message;
-      const diag = (e as Error & { diag?: SliceErrorDiag }).diag;
-      if (diag) errorExtra = diag;
     } else {
       errorMsg = NEST_V2_PROXY_NETWORK_ERROR;
     }
@@ -237,15 +213,6 @@ function IngestJobsPageBody() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Analytics</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Ingest jobs</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest ingest <code className="text-slate-400">ScrapeJob</code> ·{' '}
-            <code className="text-slate-400">GET /api/v2/ingest/scrape-jobs</code> accepts{' '}
-            <code className="text-slate-400">limit</code>, optional{' '}
-            <code className="text-slate-400">status</code>, optional{' '}
-            <code className="text-slate-400">q</code> substring search{' '}
-            <code className="text-slate-400">Bearer JWT</code> · httpOnly{' '}
-            <code className="text-slate-400">spybot_access</code> cookie).
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Link
@@ -280,23 +247,23 @@ function IngestJobsPageBody() {
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[220px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              status (optional, exact)
+              status
             </span>
             <input
               value={draftStatus}
               onChange={(e) => setDraftStatus(e.target.value)}
-              placeholder="e.g. queued"
+              placeholder=""
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
             />
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[260px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              q · kind / status / error / id substring
+              search
             </span>
             <input
               value={draftQ}
               onChange={(e) => setDraftQ(e.target.value)}
-              placeholder="Type & apply / reload below"
+              placeholder=""
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
             />
           </label>
@@ -306,30 +273,13 @@ function IngestJobsPageBody() {
             onClick={() => applyFiltersToUrl()}
             className="shrink-0 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/30 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50"
           >
-            {loading ? 'Loading…' : 'Apply & reload'}
+            {loading ? 'Loading…' : 'Reload'}
           </button>
         </div>
 
         {errorMsg && (
           <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             <p>{errorMsg}</p>
-            {errorExtra && (
-              <div className="mt-2 space-y-1 border-t border-red-500/20 pt-2 font-mono text-[11px] text-red-200/90">
-                <p>
-                  HTTP <span className="select-all">{errorExtra.status}</span>
-                </p>
-                {errorExtra.requestId && (
-                  <p>
-                    requestId: <span className="select-all">{errorExtra.requestId}</span>
-                  </p>
-                )}
-                {errorExtra.traceId && (
-                  <p>
-                    traceId: <span className="select-all">{errorExtra.traceId}</span>
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -411,7 +361,7 @@ function IngestJobsPageBody() {
         )}
 
         {rows && rows.length === 0 && !loading && sessionOk && !errorMsg && (
-          <p className="mt-4 text-sm text-slate-500">No rows returned for this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {rows && rows.length > 0 && (() => {

@@ -13,6 +13,7 @@ import {
   NEST_V2_PROXY_NETWORK_ERROR,
   NO_SPYBOT_JWT_MESSAGE,
 } from '@/lib/api-client';
+import { logAndUserFacingHttpError } from '@/lib/user-facing-errors';
 import { aggregateColumnsFromSnapshot, districtKeyFromSummaryRow } from '@/lib/snapshot-summary-columns';
 import { chartTopStringBuckets } from '@/lib/analytics-charts';
 import { StatusBarChart } from '@/components/StatusBarChart';
@@ -37,7 +38,7 @@ async function fetchDistricts(opts: {
       meta: { asOf?: string; totalApprox?: number };
     }
   | { variant: 'json'; raw: string }
-  | { variant: 'error'; msg: string; status?: number }
+  | { variant: 'error'; msg: string }
 > {
   const p = new URLSearchParams(opts.qp);
   const url = new URL(apiUrl('/api/v2/districts/summary'));
@@ -65,11 +66,7 @@ async function fetchDistricts(opts: {
     }
 
     if (!res.ok) {
-      const msg =
-        (typeof data.error === 'string' && data.error) ||
-        (typeof data.message === 'string' && data.message) ||
-        `HTTP ${res.status}`;
-      return { variant: 'error', msg, status: res.status };
+      return { variant: 'error', msg: logAndUserFacingHttpError(res, data, url.pathname) };
     }
 
     if (data.status === 'ok' && Array.isArray(data.rows)) {
@@ -166,12 +163,6 @@ function DistrictsPageBody() {
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-400">Districts</p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">Districts summary</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Nest <code className="text-slate-400">/api/v2/districts/summary</code> — bookmarkable{' '}
-            <code className="text-slate-400">&amp;q=</code>
-            (= <code className="text-slate-400">district</code> substring){' '}
-            + limit / updatedAt bounds.
-          </p>
         </div>
         <Link
           href="/dashboard/leads"
@@ -182,7 +173,7 @@ function DistrictsPageBody() {
       </div>
 
       <section className="rounded-2xl border border-[#1f2937] bg-[#0b0f16]/80 p-6 shadow-lg">
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Summary (v2)</h2>
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-slate-500">Summary</h2>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
           <label className="block min-w-0 flex-1 sm:max-w-[120px]">
@@ -198,35 +189,35 @@ function DistrictsPageBody() {
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[200px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              from · updatedAt
+              from
             </span>
             <input
               value={draftFrom}
               onChange={(e) => setDraftFrom(e.target.value)}
-              placeholder="ISO date"
+              placeholder="2024-05-01"
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
             />
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[200px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              to · updatedAt
+              to
             </span>
             <input
               value={draftTo}
               onChange={(e) => setDraftTo(e.target.value)}
-              placeholder="ISO date"
+              placeholder="2024-05-31"
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
             />
           </label>
           <label className="block min-w-0 flex-1 sm:max-w-[280px]">
             <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              q · district contains
+              search
             </span>
             <input
               value={draftQ}
               onChange={(e) => setDraftQ(e.target.value)}
               className="w-full rounded-xl border border-[#1f2937] bg-[#05070a] px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-indigo-500/50"
-              placeholder="e.g. PAT"
+              placeholder="PAT"
             />
           </label>
           <button
@@ -235,7 +226,7 @@ function DistrictsPageBody() {
             onClick={() => applyFilters()}
             className="shrink-0 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-indigo-900/30 hover:from-indigo-500 hover:to-blue-500 disabled:opacity-50"
           >
-            {loading ? 'Fetching…' : 'Apply URL & fetch'}
+            {loading ? 'Fetching…' : 'Fetch'}
           </button>
         </div>
 
@@ -247,12 +238,7 @@ function DistrictsPageBody() {
 
         {sessionOk && qry.data?.variant === 'error' && (
           <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            <p>
-              {qry.data.msg}
-              {typeof qry.data.status === 'number' ? (
-                <span className="ml-2 font-mono text-xs text-amber-100/85">HTTP {qry.data.status}</span>
-              ) : null}
-            </p>
+            <p>{qry.data.msg}</p>
           </div>
         )}
 
@@ -310,7 +296,7 @@ function DistrictsPageBody() {
         )}
 
         {okPack?.rows?.length === 0 && (
-          <p className="mt-4 text-sm text-slate-500">API returned status ok but no rows in this slice.</p>
+          <p className="mt-4 text-sm text-slate-500">No results.</p>
         )}
 
         {qry.data?.variant === 'json' && (
