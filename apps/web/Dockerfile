@@ -12,6 +12,9 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
+# Baked at build time. Leave empty for same-origin `/api/*` behind reverse proxy (docker-compose).
+ARG NEXT_PUBLIC_API_BASE_URL=
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 RUN pnpm turbo run build --filter=@vahan360/web...
 
 FROM node:20-alpine AS runner
@@ -26,4 +29,6 @@ COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /repo/apps/web/.next/static ./.next/static
 USER nextjs
 EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=5 \
+  CMD node -e "require('http').get('http://127.0.0.1:3000/',(r)=>{r.resume();process.exit(r.statusCode<500?0:1)}).on('error',()=>process.exit(1))"
 CMD ["node", "server.js"]

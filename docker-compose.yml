@@ -26,6 +26,24 @@ services:
       - vahan360-network
     restart: unless-stopped
 
+  # Next.js UI (same stack as api-express; nginx serves `/` → web, `/api/` → api-express).
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      api-express:
+        condition: service_healthy
+    networks:
+      - vahan360-network
+    restart: unless-stopped
+
   # Dedicated Postgres for Vahan360.
   postgres:
     image: postgres:15-alpine
@@ -75,6 +93,8 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       api-express:
+        condition: service_healthy
+      web:
         condition: service_healthy
     networks:
       - vahan360-network

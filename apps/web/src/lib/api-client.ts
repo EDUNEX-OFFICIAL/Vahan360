@@ -12,7 +12,12 @@ export const NEST_V2_PROXY_NETWORK_ERROR =
   'Network error — is the backend running and API_V2_PROXY_ENABLED set if you need Nest?';
 
 export function getApiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+  const raw = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (raw === undefined || raw === null) {
+    return 'http://localhost:5000';
+  }
+  // Empty string = same-origin `/api/*` (Docker nginx → api-express).
+  return String(raw).trim();
 }
 
 /** Absolute URL for a path like `/api/v1/foo` (leading slash optional). */

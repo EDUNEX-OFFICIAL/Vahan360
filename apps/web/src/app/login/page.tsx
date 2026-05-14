@@ -60,8 +60,10 @@ export default function LoginPage() {
       }
       router.replace('/dashboard/leads');
     } catch {
+      const base = getApiBaseUrl();
+      const where = base ? ` at ${base}` : ' (same-origin /api)';
       setError(
-        `Cannot reach the API at ${getApiBaseUrl()}. Check nginx /api → api-express, or set NEXT_PUBLIC_API_BASE_URL.`,
+        `Cannot reach the API${where}. Check nginx /api → api-express, or set NEXT_PUBLIC_API_BASE_URL.`,
       );
     } finally {
       setSubmitting(false);
