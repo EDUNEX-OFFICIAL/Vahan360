@@ -29,7 +29,6 @@ function isHttpsLikeRequest(req) {
 
 function useSecureCookies(req) {
   if (envFlagTrue("AUTH_COOKIE_SECURE")) return true;
-  if (process.env.NODE_ENV === "production") return true;
   return isHttpsLikeRequest(req);
 }
 

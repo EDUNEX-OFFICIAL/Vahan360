@@ -73,6 +73,16 @@ function corsOriginHandler() {
   if (!isProd && (allowlist.length === 0 || hasWildcard)) {
     return true;
   }
+  // Production with no explicit list: reflect each request Origin (cors `origin: true`).
+  // Empty allowlist used to reject every browser Origin → 500 on /api/auth/*. Set
+  // CORS_ORIGIN_ALLOWLIST when you need a strict allowlist (multiple public frontends).
+  if (isProd && allowlist.length === 0) {
+    log.warn({
+      msg: "cors.production_empty_allowlist",
+      hint: "Reflecting request Origin. Set CORS_ORIGIN_ALLOWLIST to lock origins.",
+    });
+    return true;
+  }
   const allowed = new Set(allowlist);
   return (origin, cb) => {
     if (!origin) return cb(null, true);

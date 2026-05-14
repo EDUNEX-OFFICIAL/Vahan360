@@ -17,6 +17,9 @@ services:
       # Same Redis service for BullMQ + optional cache (see apps/api-express .env.example)
       - REDIS_URL=redis://redis:6379
       - BULLMQ_REDIS_URL=redis://redis:6379
+      # Nginx sets X-Forwarded-* — trust one hop so req.ip / rate limits / cookie secure flag match client TLS
+      - TRUST_PROXY=${TRUST_PROXY:-true}
+      - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-1}
     depends_on:
       postgres:
         condition: service_healthy
