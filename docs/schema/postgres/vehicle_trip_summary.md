@@ -1,7 +1,7 @@
 # Table: `vehicle_trip_summary`
 
 **Mongo:** collection **`vehicletripsummaries`** (verify with `show collections` in `khanan_db`).  
-**Mongoose:** [`backend/src/models/VehicleTripSummary.js`](../../../backend/src/models/VehicleTripSummary.js)
+**Mongoose:** [`apps/api-express/src/models/VehicleTripSummary.js`](../../../apps/api-express/src/models/VehicleTripSummary.js)
 
 ## Observed in Mongo
 
@@ -105,7 +105,7 @@ Example reg **`JH12N9469`** — aggregation-filled fields present; full CRM ofte
 
 ## Indexes (mirror Mongoose)
 
-Create after measuring queries on staging; intended parity with [`VehicleTripSummary.js`](../../../backend/src/models/VehicleTripSummary.js):
+Create after measuring queries on staging; intended parity with [`VehicleTripSummary.js`](../../../apps/api-express/src/models/VehicleTripSummary.js):
 
 - `owner_name`
 - `status`

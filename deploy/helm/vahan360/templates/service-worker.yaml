@@ -1,0 +1,19 @@
+{{- if .Values.worker.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "vahan360.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+  ports:
+    - name: noop
+      port: {{ .Values.worker.service.port }}
+      targetPort: {{ .Values.worker.service.targetPort }}
+      protocol: TCP
+{{- end }}

@@ -1,0 +1,49 @@
+fullnameOverride: vahan360-backend
+
+workloads:
+  profile: backend
+
+web:
+  enabled: false
+
+api:
+  enabled: true
+
+nest:
+  enabled: true
+
+worker:
+  enabled: false
+
+workerRetry:
+  enabled: false
+
+browserManager:
+  enabled: false
+
+ingress:
+  enabled: false
+
+hpa:
+  enabled: true
+  web:
+    enabled: false
+  api:
+    enabled: true
+  worker:
+    enabled: false
+  workerRetry:
+    enabled: false
+
+pdb:
+  enabled: true
+  api:
+    enabled: true
+  worker:
+    enabled: false
+  workerRetry:
+    enabled: false
+  browserManager:
+    enabled: false
+  nest:
+    enabled: true

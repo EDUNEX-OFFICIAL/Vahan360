@@ -4,9 +4,9 @@ Target tables for **PostgreSQL** (local dev first, then **Hostinger VPS** — se
 
 | Table | File | Mongo collection / model |
 |--------|------|---------------------------|
-| `users` | [users.md](./users.md) | `users` → [`User.js`](../../../backend/src/models/User.js) |
-| `khanan_data` | [khanan_data.md](./khanan_data.md) | `khanandatas` → [`KhananData.js`](../../../backend/src/models/KhananData.js) |
-| `vehicle_trip_summary` | [vehicle_trip_summary.md](./vehicle_trip_summary.md) | `vehicletripsummaries` → [`VehicleTripSummary.js`](../../../backend/src/models/VehicleTripSummary.js) |
+| `users` | [users.md](./users.md) | `users` → [`User.js`](../../../apps/api-express/src/models/User.js) |
+| `khanan_data` | [khanan_data.md](./khanan_data.md) | `khanandatas` → [`KhananData.js`](../../../apps/api-express/src/models/KhananData.js) |
+| `vehicle_trip_summary` | [vehicle_trip_summary.md](./vehicle_trip_summary.md) | `vehicletripsummaries` → [`VehicleTripSummary.js`](../../../apps/api-express/src/models/VehicleTripSummary.js) |
 
 **Runbook:** [MONGODB_TO_POSTGRESQL_MIGRATION.md](../../MONGODB_TO_POSTGRESQL_MIGRATION.md)
 

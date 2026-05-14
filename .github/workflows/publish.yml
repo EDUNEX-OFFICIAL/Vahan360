@@ -1,0 +1,174 @@
+name: Publish
+
+# Triggered on semver tags (e.g. v1.2.3) or manual dispatch.
+#
+# ─── Repository secrets / vars (GitHub → Settings → Secrets and variables)
+#
+# | Name (secret)      | Masked in logs | Purpose |
+# |--------------------|----------------|---------|
+# | GITHUB_TOKEN       | partial        | Built-in; GHCR login + artifact APIs (packages: write). |
+# | COSIGN_PRIVATE_KEY | yes            | PEM from `cosign generate-key-pair` — key-based signing. |
+# | COSIGN_PASSWORD    | yes            | Passphrase for COSIGN_PRIVATE_KEY. |
+#
+# Optional repo **Variables** (non-secret): override `GHCR_ORG` via workflow `env`
+# or add `REGISTRY_USERNAME` only if you fork to non-GitHub container hosts.
+#
+# Bootstrap key-based signing (never paste private keys into YAML):
+#   cosign generate-key-pair
+#   gh secret set COSIGN_PRIVATE_KEY < cosign.key
+#   gh secret set COSIGN_PASSWORD
+#   git add cosign.pub && git commit -m "chore: add cosign public key"
+#
+# Verify images after publish:
+#   cosign verify --key cosign.pub ghcr.io/<org>/vahan360-api-nest:<tag>
+#   cosign download sbom ghcr.io/<org>/vahan360-api-nest:<tag>
+#   cosign verify-attestation --type slsaprovenance ghcr.io/<org>/vahan360-api-nest:<tag>
+#
+# When COSIGN_PRIVATE_KEY is absent, the workflow falls back to **keyless** OIDC signing.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag override (default: git tag)"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # required by cosign keyless / GitHub OIDC attestation
+
+env:
+  REGISTRY: ghcr.io
+  # Override GHCR_ORG via env in a repo-level variable if your org differs.
+  GHCR_ORG: ${{ github.repository_owner }}
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Resolve the image tag from the git ref or manual input.
+  # --------------------------------------------------------------------------
+  resolve-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "value=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # --------------------------------------------------------------------------
+  # Build + push multi-arch images and sign with cosign.
+  # --------------------------------------------------------------------------
+  publish:
+    needs: resolve-tag
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api-nest
+            dockerfile: apps/api-nest/Dockerfile
+            image_suffix: api-nest
+          - app: worker-ingest
+            dockerfile: apps/worker-ingest/Dockerfile
+            image_suffix: worker-ingest
+          - app: web
+            dockerfile: apps/web/Dockerfile
+            image_suffix: web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU (multi-arch emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.GHCR_ORG }}/vahan360-${{ matrix.image_suffix }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(needs.resolve-tag.outputs.image_tag, '-') }}
+
+      - name: Build and push (${{ matrix.app }})
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Attach SBOM (CycloneDX) and provenance attestation to the image.
+          # These are stored as OCI referrers and can be inspected with:
+          #   cosign download sbom <image>
+          #   cosign verify-attestation --type slsaprovenance <image>
+          sbom: true
+          provenance: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        if: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign (key-based)
+        if: ${{ secrets.COSIGN_PRIVATE_KEY != '' }}
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GHCR_ORG }}/vahan360-${{ matrix.image_suffix }}"
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY "${IMAGE}@${DIGEST}"
+          echo "Signed ${IMAGE}@${DIGEST}"
+
+      # Keyless signing via GitHub OIDC (Sigstore public Rekor).
+      # Activates automatically when COSIGN_PRIVATE_KEY is absent.
+      - name: Sign image (keyless / OIDC)
+        if: ${{ secrets.COSIGN_PRIVATE_KEY == '' }}
+        uses: sigstore/cosign-installer@v3
+
+      - name: Cosign keyless sign
+        if: ${{ secrets.COSIGN_PRIVATE_KEY == '' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.GHCR_ORG }}/vahan360-${{ matrix.image_suffix }}"
+          cosign sign --yes "${IMAGE}@${DIGEST}"
+          echo "Keyless-signed ${IMAGE}@${DIGEST}"
+
+  # --------------------------------------------------------------------------
+  # Generate a cosign public key bundle for auditors.
+  # Run `cosign generate-key-pair` locally and store the private key as the
+  # COSIGN_PRIVATE_KEY secret.  The public key (cosign.pub) is committed here
+  # so verifiers can run: cosign verify --key cosign.pub <image>
+  # --------------------------------------------------------------------------
+  # To bootstrap key management:
+  #   cosign generate-key-pair
+  #   gh secret set COSIGN_PRIVATE_KEY < cosign.key
+  #   gh secret set COSIGN_PASSWORD      # passphrase used during generate
+  #   git add cosign.pub && git commit -m "chore: add cosign public key"

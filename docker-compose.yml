@@ -1,18 +1,16 @@
-version: '3.8'
-
 services:
-  # Backend API (Express + Node.js)
-  backend:
+  # Express control-plane API (Node.js)
+  api-express:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api-express/Dockerfile
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
       - DATABASE_URL=postgresql://${V360_POSTGRES_USER:-vahan360}:${V360_POSTGRES_PASSWORD:-pass123}@postgres:5432/${V360_POSTGRES_DB:-vahan360}
-      # Set JWT_SECRET in a .env file next to this compose file (min 32 chars). See backend/.env.example
+      # Set JWT_SECRET in a .env file next to this compose file (min 32 chars). See apps/api-express/.env.example
       - JWT_SECRET=${JWT_SECRET}
       - SCRAPING_MODE=live
       - SCRAPING_URL=https://khanansoft.bihar.gov.in/portal/CitizenRpt/epassreportAllDist.aspx
@@ -20,7 +18,7 @@ services:
       postgres:
         condition: service_healthy
     networks:
-      - spybot-network
+      - vahan360-network
     restart: unless-stopped
 
   # Dedicated Postgres for Vahan360.
@@ -28,53 +26,38 @@ services:
     image: postgres:15-alpine
     container_name: vahan360-postgres
     restart: unless-stopped
-    # Host 15432: avoid clash when Windows PostgreSQL already uses 5432/5433 (common dev setup).
+    # 15432: avoid clash when host PostgreSQL already uses 5432/5433 (common Windows dev).
     ports:
       - "15432:5432"
     environment:
       POSTGRES_USER: ${V360_POSTGRES_USER:-vahan360}
       POSTGRES_PASSWORD: ${V360_POSTGRES_PASSWORD:-pass123}
       POSTGRES_DB: ${V360_POSTGRES_DB:-vahan360}
-      # Enforce password auth (SCRAM) for host connections on new data dirs — do not use trust in production
+      # Enforce password auth (SCRAM) for host connections on new data dirs - do not use trust in production
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     volumes:
       - vahan360_pg_data:/var/lib/postgresql/data
     networks:
-      - spybot-network
+      - vahan360-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # Next.js frontend (proxied by nginx on /)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    environment:
-      - NODE_ENV=production
-    depends_on:
-      - backend
-    networks:
-      - spybot-network
+  redis:
+    image: redis:7-alpine
+    container_name: vahan360-redis
     restart: unless-stopped
-
-  # MongoDB disabled - use live Atlas
-  # mongo:
-  #   image: mongo:7.0
-  #   ports:
-  #     - "27017:27017"
-  #   environment:
-  #     - MONGO_INITDB_ROOT_USERNAME=admin
-  #     - MONGO_INITDB_ROOT_PASSWORD=password
-  #     - MONGO_INITDB_DATABASE=spybot
-  #   volumes:
-  #     - mongo_data:/data/db
-  #     - ./mongo-init:/docker-entrypoint-initdb.d
-  #   networks:
-  #     - spybot-network
-  #   restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - vahan360-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # Nginx Reverse Proxy
   nginx:
@@ -85,18 +68,71 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
-      - ./nginx/html:/usr/share/nginx/html:ro
     depends_on:
-      - backend
-      - frontend
+      - api-express
     networks:
-      - spybot-network
+      - vahan360-network
     restart: unless-stopped
 
+  # Profile `obs`: Prometheus + Grafana (see README). Does not include Loki to keep footprint small.
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    profiles: ["obs"]
+    ports:
+      - "9090:9090"
+    volumes:
+      # Whole tree so rule_files (rules/*.yml) resolve beside prometheus.yml
+      - ./deploy/prometheus:/etc/prometheus:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    networks:
+      - vahan360-network
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: ["obs"]
+    ports:
+      - "3002:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    networks:
+      - vahan360-network
+
+  # Profile `obs-loki`: Loki + Promtail (Docker log shipping). Use with Docker Desktop Linux engine.
+  loki:
+    image: grafana/loki:2.9.8
+    profiles: ["obs-loki"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./deploy/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - vahan360_loki_data:/loki
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+    networks:
+      - vahan360-network
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    profiles: ["obs-loki"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - vahan360_promtail_positions:/tmp
+    command:
+      - "-config.file=/etc/promtail/config.yml"
+    depends_on:
+      - loki
+    networks:
+      - vahan360-network
+
 volumes:
-  mongo_data:
   vahan360_pg_data:
+  vahan360_loki_data:
+  vahan360_promtail_positions:
 
 networks:
-  spybot-network:
+  vahan360-network:
     driver: bridge

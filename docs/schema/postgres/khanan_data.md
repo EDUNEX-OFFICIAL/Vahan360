@@ -1,7 +1,7 @@
 # Table: `khanan_data`
 
 **Mongo:** database `khanan_db`, collection **`khanandatas`**.  
-**Mongoose:** [`backend/src/models/KhananData.js`](../../../backend/src/models/KhananData.js)
+**Mongoose:** [`apps/api-express/src/models/KhananData.js`](../../../apps/api-express/src/models/KhananData.js)
 
 ## Observed in Mongo (update as you re-verify)
 

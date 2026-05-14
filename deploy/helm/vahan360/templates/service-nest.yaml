@@ -1,0 +1,19 @@
+{{- if .Values.nest.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "vahan360.fullname" . }}-nest
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nest
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "vahan360.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nest
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+      protocol: TCP
+{{- end }}

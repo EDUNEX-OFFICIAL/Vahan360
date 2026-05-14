@@ -1,5 +1,5 @@
 {
-  "name": "spybot-nextjs",
+  "name": "vahan360",
   "private": true,
   "packageManager": "pnpm@10.30.3",
   "scripts": {
@@ -7,12 +7,16 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "db:push": "pnpm --filter spybot-backend exec prisma db push",
-    "sync:user": "pnpm --filter spybot-backend run sync:user",
-    "seed:sample": "pnpm --filter spybot-backend run prisma:seed:sample",
-    "db:counts": "pnpm --filter spybot-backend run db:counts"
+    "precommit": "pnpm exec lint-staged",
+    "prepare": "husky",
+    "db:push": "pnpm --filter @vahan360/api-express exec prisma db push",
+    "sync:user": "pnpm --filter @vahan360/api-express run sync:user",
+    "seed:sample": "pnpm --filter @vahan360/api-express run prisma:seed:sample",
+    "db:counts": "pnpm --filter @vahan360/api-express run db:counts"
   },
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
     "turbo": "^1.13.4"
   }
 }

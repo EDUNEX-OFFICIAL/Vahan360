@@ -1,0 +1,58 @@
+# Alertmanager configuration for Vahan360.
+# Keep credentials out of Git; provide secret files at runtime.
+# Docs: https://prometheus.io/docs/alerting/latest/configuration/
+
+global:
+  resolve_timeout: 5m
+  # Optional SMTP settings for email receiver below.
+  # smtp_smarthost: 'smtp.example.com:587'
+  # smtp_from: 'alertmanager@vahan360.example.com'
+  # smtp_auth_username: 'alertmanager@vahan360.example.com'
+  # smtp_auth_password_file: /etc/alertmanager/secrets/smtp_password
+
+# The root route — all alerts fall through here unless a child route matches.
+route:
+  receiver: 'ops-webhook'
+  group_by: ['alertname', 'severity']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+  routes:
+    # Critical alerts (DLQ depth spike, worker crash loop).
+    - match:
+        severity: critical
+      receiver: 'critical-webhook'
+      continue: false
+
+    # Warning alerts (queue lag, high failure rate).
+    - match:
+        severity: warning
+      receiver: 'ops-email'
+      continue: false
+
+receivers:
+  - name: 'ops-webhook'
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/ops_webhook_url
+        send_resolved: true
+        max_alerts: 0
+
+  - name: 'critical-webhook'
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/critical_webhook_url
+        send_resolved: true
+        max_alerts: 0
+
+  - name: 'ops-email'
+    email_configs:
+      - to: ops@example.com
+        send_resolved: true
+
+inhibit_rules:
+  # Silence warning-level alerts when a matching critical fires (same alertname + instance).
+  - source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ['alertname', 'instance']

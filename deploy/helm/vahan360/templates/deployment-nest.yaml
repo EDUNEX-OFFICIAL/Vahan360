@@ -1,0 +1,100 @@
+{{- if .Values.nest.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vahan360.fullname" . }}-nest
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: nest
+spec:
+  replicas: {{ .Values.nest.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nest
+  template:
+    metadata:
+      labels:
+        {{- include "vahan360.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: nest
+      {{- with .Values.nest.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.nest.terminationGracePeriodSeconds | default 45 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: nest
+          image: "{{ .Values.nest.image.repository }}:{{ .Values.nest.image.tag }}"
+          imagePullPolicy: {{ .Values.nest.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: {{ include "vahan360.fullname" . }}-config
+            - secretRef:
+                name: {{ include "vahan360.secretName" . }}
+          env:
+            - name: NEST_API_PORT
+              value: "4000"
+            - name: NODE_ENV
+              value: {{ .Values.config.NODE_ENV | default "production" | quote }}
+            {{- if .Values.nest.openApiEnabled }}
+            - name: OPENAPI_ENABLED
+              value: "true"
+            {{- end }}
+            {{- range $k, $v := .Values.nest.otelEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ include "vahan360.dbUrlSecretKey" . }}
+            - name: INGEST_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.ingestDatabaseUrl }}
+                  optional: true
+            {{- if .Values.secrets.keys.ingestDatabaseUrlRead }}
+            - name: INGEST_DATABASE_URL_READ_REPLICA
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.ingestDatabaseUrlRead }}
+                  optional: true
+            {{- end }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.otelHeaders }}
+                  optional: true
+            {{- range $k, $v := .Values.nest.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
+          {{- with .Values.nest.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.nest.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.nest.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

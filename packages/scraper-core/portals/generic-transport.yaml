@@ -1,0 +1,26 @@
+# Minimal selector registry for generic transport / smoke flows.
+
+portalId: generic-transport
+version: "v0.0.1"
+lastUpdated: "2026-05-14"
+baseUrl: https://example.com/
+description: |
+  Placeholder portal for transport-style pages. Two selectors for smoke wiring.
+
+pages:
+  default:
+    fields:
+      searchInput:
+        critical: true
+        selectors:
+          - "input[type='search']"
+        fallbackSelectors:
+          - "input[name='q']"
+          - "#search"
+      submitButton:
+        critical: true
+        selectors:
+          - "button[type='submit']"
+        fallbackSelectors:
+          - "input[type='submit']"
+          - "#submit"

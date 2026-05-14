@@ -1,0 +1,76 @@
+{{- if .Values.pdb.enabled }}
+{{- if and .Values.api.enabled .Values.pdb.api.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vahan360.fullname" . }}-api
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.api.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+{{- end }}
+{{- if and .Values.worker.enabled .Values.pdb.worker.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.worker.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+{{- end }}
+{{- if and .Values.workerRetry.enabled .Values.pdb.workerRetry.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker-retry
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.workerRetry.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-retry
+{{- end }}
+{{- if and .Values.browserManager.enabled .Values.pdb.browserManager.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vahan360.fullname" . }}-browser-manager
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.browserManager.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: browser-manager
+{{- end }}
+{{- if and .Values.nest.enabled .Values.pdb.nest.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "vahan360.fullname" . }}-nest
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.nest.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nest
+{{- end }}
+{{- end }}

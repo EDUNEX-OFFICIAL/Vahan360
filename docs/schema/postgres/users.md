@@ -1,7 +1,7 @@
 # Table: `users`
 
 **Mongo:** collection `users` (verify exact name with `show collections` in `khanan_db`).  
-**Mongoose:** [`backend/src/models/User.js`](../../../backend/src/models/User.js)
+**Mongoose:** [`apps/api-express/src/models/User.js`](../../../apps/api-express/src/models/User.js)
 
 ## Observed in Mongo
 

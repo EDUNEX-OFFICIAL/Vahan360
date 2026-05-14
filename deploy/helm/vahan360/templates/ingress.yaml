@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "vahan360.fullname" . }}
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
+    nginx.ingress.kubernetes.io/proxy-body-size: {{ .Values.ingress.nginx.proxyBodySize | quote }}
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: {{ .Values.ingress.nginx.proxyConnectTimeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-read-timeout: {{ .Values.ingress.nginx.proxyReadTimeout | quote }}
+    nginx.ingress.kubernetes.io/proxy-send-timeout: {{ .Values.ingress.nginx.proxySendTimeout | quote }}
+    nginx.ingress.kubernetes.io/use-forwarded-headers: {{ .Values.ingress.nginx.useForwardedHeaders | quote }}
+    nginx.ingress.kubernetes.io/compute-full-forwarded-for: {{ .Values.ingress.nginx.computeFullForwardedFor | quote }}
+    {{- if .Values.ingress.securityHeaders.enabled }}
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+{{ .Values.ingress.securityHeaders.value | nindent 6 }}
+    {{- end }}
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ if eq .service "api" }}{{ include "vahan360.fullname" $ }}-api{{ else }}{{ include "vahan360.fullname" $ }}-web{{ end }}
+                port:
+                  number: {{ if eq .service "api" }}{{ $.Values.api.service.port }}{{ else }}{{ $.Values.web.service.port }}{{ end }}
+          {{- end }}
+    {{- end }}
+{{- end }}

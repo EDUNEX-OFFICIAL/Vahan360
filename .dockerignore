@@ -1,0 +1,45 @@
+# Source-control / CI metadata
+.git
+.github
+
+# pnpm / Node deps and caches
+node_modules
+**/node_modules
+.pnpm-store
+**/.pnpm-store
+
+# Build outputs (Turborepo / Next / TS / Nest)
+.turbo
+**/.turbo
+.next
+**/.next
+dist
+**/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Test / coverage / Playwright artifacts
+coverage
+**/coverage
+playwright-report
+**/playwright-report
+test-results
+**/test-results
+
+# Local env / logs / OS noise — never bake into images
+.env
+**/.env
+.env.*
+**/.env.*
+!**/.env.example
+*.log
+**/*.log
+.DS_Store
+Thumbs.db
+
+# Repo-level dev docs / scripts that don't belong in service images
+docs
+ARCHITECTURE.md
+README.md
+test-migration.ps1
+test-migration.sh

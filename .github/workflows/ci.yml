@@ -1,0 +1,127 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build-and-validate:
+    runs-on: ubuntu-latest
+    env:
+      # Keep the default lane browser-free: pnpm install must not pull chromium
+      # via playwright's postinstall (we only depend on playwright-core, but set
+      # this defensively in case someone adds `playwright` later).
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Forbid legacy localStorage key string in apps/packages
+        run: |
+          set -euo pipefail
+          if git grep -nF "spybot_token" -- apps packages; then
+            echo "::error::Disallowed spybot_token substring in apps/ or packages/ (historical notes belong under docs/ only)."
+            exit 1
+          fi
+
+      # Fast lint/typecheck on packages/apps that expose a `lint` script.
+      # @vahan360/contracts and @vahan360/api-nest: `tsc --noEmit`.
+      # @vahan360/web: `eslint src/` via eslint-config-next (warnings allowed; exit 0).
+      - name: Typecheck (lint scripts)
+        run: pnpm turbo run lint --filter=@vahan360/contracts --filter=@vahan360/api-nest --filter=@vahan360/web
+
+      - name: Smoke require Express API deps
+        run: pnpm --filter @vahan360/api-express exec node -e "require('@bull-board/api'); require('@bull-board/express'); console.log('bull-board ok')"
+
+      - name: Turbo build (workspace + Nest API)
+        run: pnpm turbo run build
+
+      - name: Prisma schema validate (@vahan360/db)
+        run: pnpm --filter @vahan360/db db:validate
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Helm dependency update, lint, template
+        working-directory: deploy/helm/vahan360
+        run: |
+          helm dependency update
+          helm lint .
+          helm template vahan360-ci . --namespace vahan360 > /tmp/vahan360-rendered.yaml
+          head -n 40 /tmp/vahan360-rendered.yaml
+          helm template vahan360-ci-nest . --namespace vahan360 --set nest.enabled=true > /tmp/vahan360-nest.yaml
+          grep -E '(name: .*-nest|NEST_INTERNAL_URL)' /tmp/vahan360-nest.yaml | head -n 20
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker build Nest image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api-nest/Dockerfile
+          push: false
+          tags: vahan360-api-nest:ci
+
+  # Optional Playwright smoke lane. Off by default (`if: false`); flip the
+  # gate when you want a real browser-backed run, or copy this block into a
+  # separate workflow triggered on `workflow_dispatch`. The default CI lane
+  # above intentionally avoids the ~150MB chromium download to stay fast.
+  playwright-smoke:
+    if: false
+    runs-on: ubuntu-latest
+    needs: build-and-validate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install (with browser cache primed)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright chromium
+        run: pnpm dlx playwright@latest install --with-deps chromium
+
+      - name: Run scraper-core smoke
+        env:
+          PLAYWRIGHT_ENABLED: "true"
+          PLAYWRIGHT_SMOKE_URL: "https://example.com"
+        run: |
+          node -e "require('@vahan360/scraper-core').runPlaywrightSmoke({ url: process.env.PLAYWRIGHT_SMOKE_URL }).then(r => { console.log(JSON.stringify(r, null, 2)); }).catch(e => { console.error(e); process.exit(1); })"

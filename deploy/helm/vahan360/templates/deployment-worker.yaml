@@ -1,0 +1,101 @@
+{{- if .Values.worker.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vahan360.fullname" . }}-worker
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "vahan360.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "vahan360.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      {{- with .Values.worker.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.worker.terminationGracePeriodSeconds | default 75 }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: "{{ .Values.worker.image.repository }}:{{ .Values.worker.image.tag }}"
+          imagePullPolicy: {{ .Values.worker.image.pullPolicy }}
+          ports:
+            - name: noop
+              containerPort: 5555
+          envFrom:
+            - configMapRef:
+                name: {{ include "vahan360.fullname" . }}-config
+            - secretRef:
+                name: {{ include "vahan360.secretName" . }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ include "vahan360.dbUrlSecretKey" . }}
+            - name: OTEL_EXPORTER_OTLP_HEADERS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.otelHeaders }}
+                  optional: true
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_URL
+              value: {{ include "vahan360.redisUrl" . | quote }}
+            - name: BULLMQ_REDIS_URL
+              value: {{ include "vahan360.redisUrl" . | quote }}
+            {{- else }}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+                  optional: true
+            - name: BULLMQ_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+                  optional: true
+            {{- end }}
+            {{- if .Values.browserManager.enabled }}
+            - name: BROWSER_MANAGER_BASE_URL
+              value: {{ printf "http://%s-browser-manager:%v" (include "vahan360.fullname" .) (.Values.browserManager.service.port | default 3005) | quote }}
+            {{- end }}
+            {{- if .Values.secrets.keys.browserManagerToken }}
+            - name: BROWSER_MANAGER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vahan360.secretName" . }}
+                  key: {{ .Values.secrets.keys.browserManagerToken }}
+                  optional: true
+            {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep {{ .Values.worker.lifecycle.preStopSleepSeconds | default 20 }}"]
+          {{- with .Values.worker.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.worker.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.worker.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

@@ -1,0 +1,33 @@
+{
+  "name": "@vahan360/worker-ingest",
+  "version": "0.0.0",
+  "private": true,
+  "description": "BullMQ ingest worker for Vahan360 scrape jobs.",
+  "main": "src/index.js",
+  "scripts": {
+    "lint": "eslint \"src/**/*.js\"",
+    "build": "node --check src/telemetry.js && node --check src/lib/activeTraceLogFields.js && node --check src/lib/runWithJobTraceContext.js && node --check src/lib/workerMetrics.js && node --check src/lib/selectorHealthMonitor.js && node --check src/lib/browserManagerClient.js && node --check src/persistJobArtifacts.js && node --check src/browserManagerServer.js && node --check src/index.js && node --check src/lib/logger.js",
+    "start": "node src/index.js",
+    "playwright:install": "pnpm dlx playwright@latest install chromium"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.52.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.2",
+    "@opentelemetry/sdk-node": "^0.57.2",
+    "@vahan360/browser-pool": "workspace:*",
+    "@vahan360/contracts": "workspace:*",
+    "@vahan360/db": "workspace:*",
+    "@vahan360/scraper-core": "workspace:*",
+    "bullmq": "^5.76.8",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.10.1",
+    "jsonwebtoken": "^9.0.2",
+    "prom-client": "^15.1.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
+  }
+}

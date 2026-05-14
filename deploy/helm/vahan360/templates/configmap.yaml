@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vahan360.fullname" . }}-config
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+data:
+{{- $cfg := deepCopy .Values.config }}
+{{- if .Values.nest.enabled }}
+{{- $defaultNestUrl := printf "http://%s-nest:4000" (include "vahan360.fullname" .) }}
+{{- $nestUrl := default $defaultNestUrl .Values.nest.internalUrl }}
+{{- $_ := set $cfg "NEST_INTERNAL_URL" $nestUrl }}
+{{- end }}
+{{- range $k, $v := $cfg }}
+  {{ $k }}: {{ $v | quote }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "vahan360.fullname" . }}-web-config
+  labels:
+    {{- include "vahan360.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+data:
+  {{- range $k, $v := .Values.webConfig }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

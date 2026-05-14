@@ -115,7 +115,7 @@ Is repo mein **nginx static** ke liye volume already compose mein hai; alag se p
 cd /opt/vahan360
 docker compose up -d postgres
 sleep 15
-docker compose run --rm backend npx prisma db push
+docker compose run --rm api-express npx prisma db push
 docker compose up -d --build
 docker compose ps
 ```
@@ -138,9 +138,9 @@ chmod +x scripts/seed-admin-docker.sh
 ./scripts/seed-admin-docker.sh
 ```
 
-Ya manually: `docker compose run --rm backend npx prisma db push` phir `docker compose run --rm backend npm run sync:user`.
+Ya manually: `docker compose run --rm api-express npx prisma db push` phir `docker compose run --rm api-express npm run sync:user`.
 
-**VPS par `pnpm` mat dhoondo:** Ubuntu host par monorepo `pnpm` install karna zaroori **nahi**. Seed / sync hamesha **`docker compose run --rm backend ...`** se chalao (upar wale commands ya `seed-admin-docker.sh`).
+**VPS par `pnpm` mat dhoondo:** Ubuntu host par monorepo `pnpm` install karna zaroori **nahi**. Seed / sync hamesha **`docker compose run --rm api-express ...`** se chalao (upar wale commands ya `seed-admin-docker.sh`).
 
 **CI deploy workflow** sirf `git pull` + `docker compose up` chalata hai — `db push` / `sync:user` **yahan nahi**, kyunki galat `.env` vs purana Postgres volume par **P1000 (auth failed)** se poora deploy fail ho sakta hai. Pehle **`/opt/vahan360/.env`** ke `V360_POSTGRES_*` ko **us password ke saath match** karo jo volume pehli baar create hote waqt use hua tha (ya naya volume + consistent password).
 
@@ -151,7 +151,7 @@ Postgres data directory **pehli start** par `POSTGRES_PASSWORD` se lock ho jata 
 **Path A — purana password yaad ho (data bachao)**
 
 1. `/opt/vahan360/.env` mein `V360_POSTGRES_USER`, `V360_POSTGRES_PASSWORD`, `V360_POSTGRES_DB` **usi** value par set karo jis se volume pehle bana tha (zyada tar pehla deploy `pass123` default tha agar tumne tab kuch change na kiya ho).
-2. `docker compose up -d --force-recreate postgres backend`
+2. `docker compose up -d --force-recreate postgres api-express`
 3. `./scripts/verify-pg-health.sh` (ya `curl -sS http://127.0.0.1:3001/api/health/pg` → `ok: true`)
 4. Zarurat ho to `./scripts/seed-admin-docker.sh`
 
@@ -164,7 +164,7 @@ docker compose down --volumes
 # Named volume compose file: vahan360_pg_data (project prefix se naam: docker volume ls | grep vahan360)
 docker compose up -d postgres
 sleep 15
-docker compose run --rm backend npx prisma db push
+docker compose run --rm api-express npx prisma db push
 docker compose up -d --build
 chmod +x scripts/seed-admin-docker.sh && ./scripts/seed-admin-docker.sh
 ```
@@ -173,7 +173,7 @@ Ya one-shot: [`scripts/recreate-postgres-volume.sh`](../scripts/recreate-postgre
 
 **Path B ke baad:** browser se `admin` / `admin123` se login; `generate-token` **200** hona chahiye.
 
-**Auth / Prisma error-handling code change ke baad:** VPS par naya backend image ke liye `git pull origin main` + `docker compose up -d --build` (ya sirf `docker compose up -d --build backend`).
+**Auth / Prisma error-handling code change ke baad:** VPS par naya API image ke liye `git pull origin main` + `docker compose up -d --build` (ya sirf `docker compose up -d --build api-express`).
 
 **Verify (VPS par):**
 

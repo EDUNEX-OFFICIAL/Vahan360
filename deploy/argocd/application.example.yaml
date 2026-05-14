@@ -1,0 +1,34 @@
+# Example Argo CD Application (GitOps). Copy to your cluster repo or uncomment and tune.
+#
+# apiVersion: argoproj.io/v1alpha1
+# kind: Application
+# metadata:
+#   name: vahan360
+#   namespace: argocd
+# spec:
+#   project: default
+#   source:
+#     repoURL: https://github.com/your-org/your-gitops-repo.git
+#     targetRevision: main
+#     path: deploy/helm/vahan360
+#     helm:
+#       valueFiles:
+#         - values-prod.yaml
+#   destination:
+#     server: https://kubernetes.default.svc
+#     namespace: vahan360
+#   syncPolicy:
+#     automated:
+#       prune: true
+#       selfHeal: true
+#     syncOptions:
+#       - CreateNamespace=true
+#
+# Before sync: create the app Secret in `vahan360` (name must match Helm fullname, e.g. `{release}-vahan360-secrets`):
+#   kubectl -n vahan360 create secret generic vahan360-secrets \
+#     --from-literal=DATABASE_URL='postgresql://...' \
+#     --from-literal=JWT_SECRET='...' \
+#     --from-literal=REDIS_URL='redis://...'
+#
+# If you enable the bundled Redis subchart (`redis.enabled: true`), omit REDIS_URL
+# from the secret and let the chart inject cluster-local URLs.

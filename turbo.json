@@ -3,10 +3,14 @@
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**", "build/**", "node_modules/.prisma/**"]
+      "outputs": [".next/**", "dist/**", "build/**", "node_modules/.prisma/**", "src/generated/**"]
     },
     "dev": {
       "cache": false
+    },
+    "start": {
+      "cache": false,
+      "dependsOn": ["build"]
     },
     "lint": {},
     "test": {}

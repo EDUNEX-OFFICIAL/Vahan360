@@ -1,0 +1,78 @@
+---
+# §9 — Kubernetes CronJob: auto-create monthly job_events partitions.
+#
+# Runs on the 1st of each month at 00:30 UTC. Ensures 3 future monthly
+# child partitions of `ingest.job_events` always exist.
+#
+# Prerequisites:
+#   1. DBA has applied job_events_partition.sql (create-new-swap, default partition present).
+#   2. Secret `vahan360-db-secret` has key `DATABASE_URL` with Postgres DSN.
+#   3. Image must include `psql` (postgres-client).
+#
+# Activation:
+#   kubectl apply -f deploy/db/partitioning/manage_monthly_partitions.cronjob.yaml -n <namespace>
+#
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vahan360-partition-manager
+  labels:
+    app.kubernetes.io/name: vahan360
+    app.kubernetes.io/component: db-maintenance
+spec:
+  schedule: "30 0 1 * *"   # 00:30 UTC on 1st of every month
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vahan360
+            app.kubernetes.io/component: db-maintenance
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: partition-manager
+              # Use postgres image (includes psql) or your custom ops image.
+              image: postgres:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  apk add --no-cache bash curl 2>/dev/null || true
+                  # Download or embed the script from a ConfigMap / pre-baked image.
+                  # For simplicity this inline version mirrors manage_monthly_partitions.sh.
+                  set -e
+                  MONTHS_AHEAD="${MONTHS_AHEAD:-3}"
+                  RETENTION_MONTHS="${RETENTION_MONTHS:-0}"
+                  echo "[INFO] Running partition manager (MONTHS_AHEAD=${MONTHS_AHEAD})"
+                  for i in $(seq 0 $((MONTHS_AHEAD - 1))); do
+                    TARGET=$(date -u -d "+${i} months" +%Y-%m-01 2>/dev/null || date -u -v "+${i}m" +%Y-%m-01)
+                    YEAR="${TARGET:0:4}"
+                    MONTH="${TARGET:5:2}"
+                    NEXT=$(date -u -d "+$((i+1)) months" +%Y-%m-01 2>/dev/null || date -u -v "+$((i+1))m" +%Y-%m-01)
+                    CHILD="ingest.job_events_y${YEAR}m${MONTH}"
+                    echo "[INFO] Ensuring ${CHILD} FROM '${TARGET}' TO '${NEXT}'"
+                    psql "${DATABASE_URL}" -c "CREATE TABLE IF NOT EXISTS ${CHILD} PARTITION OF ingest.job_events FOR VALUES FROM ('${TARGET}') TO ('${NEXT}');"
+                  done
+                  echo "[INFO] Done."
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: vahan360-db-secret
+                      key: DATABASE_URL
+                - name: MONTHS_AHEAD
+                  value: "3"
+                - name: RETENTION_MONTHS
+                  value: "0"
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi

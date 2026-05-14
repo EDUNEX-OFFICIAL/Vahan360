@@ -4,7 +4,7 @@
 set -euo pipefail
 REPO_DIR="${DEPLOY_REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$REPO_DIR"
-docker compose run --rm backend npx prisma db push
-docker compose run --rm backend npm run sync:user
+docker compose run --rm api-express npx prisma db push
+docker compose run --rm api-express npm run sync:user
 echo "Health check (expect userCount >= 1):"
 curl -sS "http://127.0.0.1:3001/api/health/pg" || true

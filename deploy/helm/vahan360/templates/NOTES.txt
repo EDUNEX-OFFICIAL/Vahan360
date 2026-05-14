@@ -1,0 +1,90 @@
+{{- /*
+  Helm post-install / post-upgrade notes.
+  Shown by `helm install` and `helm upgrade`. Keep actionable and concise.
+*/ -}}
+
+╔════════════════════════════════════════════════════════════╗
+║              Vahan360  — Post-install checklist            ║
+╚════════════════════════════════════════════════════════════╝
+
+Release : {{ .Release.Name }}
+Chart   : {{ .Chart.Name }}-{{ .Chart.Version }}
+Namespace: {{ .Release.Namespace }}
+
+───────────────────────────────────────────────────────────────
+① REQUIRED — verify API is up
+───────────────────────────────────────────────────────────────
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "vahan360.name" . }}
+  kubectl port-forward svc/{{ include "vahan360.fullname" . }}-api 8080:{{ .Values.api.service.port }} &
+  curl http://localhost:8080/health
+
+───────────────────────────────────────────────────────────────
+② KEDA (§4 — operator pre-flight checklist)
+───────────────────────────────────────────────────────────────
+{{- if .Values.keda.enabled }}
+  ⚠  keda.enabled=true — KEDA ScaledObjects are deployed.
+     Verify CRDs are present before workers auto-scale:
+
+     kubectl get crd scaledobjects.keda.sh 2>&1 || echo "❌ KEDA CRDs missing — install KEDA first."
+     kubectl get crd triggerauthentications.keda.sh 2>&1 || echo "❌ TriggerAuthentication CRD missing."
+
+     KEDA Redis address : {{ .Values.keda.redis.address | default "(auto from chart redis)" | quote }}
+     Worker ScaledObject: {{ include "vahan360.fullname" . }}-worker-so
+     Avoid stacking a CPU HPA on the same Deployment — disable hpa.enabled or set keda.enabled=false if both are on.
+
+     Quick status:
+       kubectl get scaledobjects -n {{ .Release.Namespace }}
+       kubectl describe scaledobject {{ include "vahan360.fullname" . }}-worker-so -n {{ .Release.Namespace }}
+{{- else }}
+  ℹ  keda.enabled=false — KEDA ScaledObjects not deployed.
+     Enable with --set keda.enabled=true after installing KEDA operator:
+       kubectl apply -f https://github.com/kedacore/keda/releases/latest/download/keda-2.14.0.yaml
+     Then set keda.redis.address and run `helm upgrade`.
+{{- end }}
+
+───────────────────────────────────────────────────────────────
+③ Postgres — run pending migrations
+───────────────────────────────────────────────────────────────
+  # From a migration job or ops shell with DATABASE_URL set:
+  pnpm --filter @vahan360/db db:migrate:deploy
+
+  # New migrations since last release:
+  #   20260514230000_raw_khanan_district_key    (§6 districtKey column)
+  #   20260514240000_system_tenant_orgs         (§3 org FK graph)
+  # Template (skip unless activating range partitioning):
+  #   20260514200000_partition_job_events_template
+
+───────────────────────────────────────────────────────────────
+④ Range partitioning (§9) — DBA activation
+───────────────────────────────────────────────────────────────
+  Template committed but NOT applied automatically.
+  See: deploy/db/partitioning/manage_monthly_partitions.sh
+  Activate after DBA review:
+    psql $DATABASE_URL -f deploy/db/partitioning/job_events_partition.sql
+    pnpm --filter @vahan360/db exec prisma migrate resolve \
+      --applied 20260514200000_partition_job_events_template
+
+───────────────────────────────────────────────────────────────
+⑤ Fair-share browser-manager (§8)
+───────────────────────────────────────────────────────────────
+  Enable with:
+    --set config.BROWSER_MANAGER_FAIR_SHARE_ENABLED=true
+    --set config.BROWSER_MANAGER_REPLICA_ID={{ .Release.Name }}-bm-0
+
+  Check distribution:
+    kubectl port-forward svc/{{ include "vahan360.fullname" . }}-browser-manager 3005:3005 &
+    curl http://localhost:3005/v1/pool/fairshare
+
+───────────────────────────────────────────────────────────────
+⑥ Legacy Puppeteer sunset (§5)
+───────────────────────────────────────────────────────────────
+  LEGACY_PUPPETEER_ENABLED={{ index .Values.config "LEGACY_PUPPETEER_ENABLED" | default "false" }}
+  Set LEGACY_SCRAPER_SUNSET_AFTER=<ISO date> to trigger hard-stop after that date
+  (e.g. --set config.LEGACY_SCRAPER_SUNSET_AFTER=2026-09-01).
+
+────────────────────────────────────────────────────────────────
+  Docs: apps/api-express → /api/docs (OPENAPI_ENABLED=true)
+        Nest Swagger    → /api/v2/docs (OPENAPI_ENABLED=true)
+        KEDA guide      → deploy/helm/vahan360/KEDA.md
+        Runbooks        → docs/RUNBOOK_INCIDENTS.md
+────────────────────────────────────────────────────────────────

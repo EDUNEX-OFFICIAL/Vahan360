@@ -15,7 +15,7 @@ docker compose down --volumes
 docker compose up -d postgres
 echo "Waiting for Postgres..."
 sleep 15
-docker compose run --rm backend npx prisma db push
+docker compose run --rm api-express npx prisma db push
 docker compose up -d --build
-docker compose run --rm backend npm run sync:user
+docker compose run --rm api-express npm run sync:user
 echo "Done. Test: curl -sS http://127.0.0.1:3001/api/health/pg"

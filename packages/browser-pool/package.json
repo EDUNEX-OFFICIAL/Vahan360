@@ -1,0 +1,14 @@
+{
+  "name": "@vahan360/browser-pool",
+  "version": "0.0.0",
+  "private": true,
+  "description": "In-process Playwright browser pool (acquireContext / releaseContext) for workers.",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node --check src/index.js",
+    "lint": "node --check src/index.js"
+  },
+  "dependencies": {
+    "playwright-core": "^1.47.2"
+  }
+}

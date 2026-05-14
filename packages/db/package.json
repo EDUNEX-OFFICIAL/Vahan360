@@ -1,0 +1,38 @@
+{
+  "name": "@vahan360/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Prisma schema for Vahan360 ingest (`ingest`), processed stubs (`processed`), and system tables (`system`).",
+  "main": "./src/generated/prisma/index.js",
+  "types": "./src/generated/prisma/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/generated/prisma/index.d.ts",
+      "default": "./src/generated/prisma/index.js"
+    },
+    "./ingest-client": {
+      "types": "./src/createIngestPrismaClient.d.ts",
+      "default": "./src/createIngestPrismaClient.js"
+    },
+    "./ingest-client-readonly": {
+      "types": "./src/createIngestReadonlyPrismaClient.d.ts",
+      "default": "./src/createIngestReadonlyPrismaClient.js"
+    }
+  },
+  "scripts": {
+    "build": "prisma generate",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:validate": "cross-env DATABASE_URL=postgresql://validate:validate@127.0.0.1:5432/validate prisma validate",
+    "lint": "cross-env DATABASE_URL=postgresql://validate:validate@127.0.0.1:5432/validate prisma validate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.15.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.4.5",
+    "prisma": "^6.15.0"
+  }
+}
