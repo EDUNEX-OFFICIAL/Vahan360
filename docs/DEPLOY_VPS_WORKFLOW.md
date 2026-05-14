@@ -79,6 +79,9 @@ JWT_SECRET=paste_openssl_or_long_random_min_32_chars
 V360_POSTGRES_USER=vahan360
 V360_POSTGRES_PASSWORD=strong_unique_password
 V360_POSTGRES_DB=vahan360
+
+# Public hostname for automatic HTTPS (Caddy + Let's Encrypt). Omit or leave unset for HTTP-only (:80).
+# CADDY_DOMAIN=app.vahan360.info
 ```
 
 **`V360_POSTGRES_*` aur purana volume (align-env):** Postgres ka password **sirf tab set hota hai jab data directory pehli baar empty hoti hai**. Uske baad `/opt/vahan360/.env` mein `V360_POSTGRES_PASSWORD` badalne se disk par stored password **nahi** badalta — backend ka `DATABASE_URL` galat ho jata hai (Prisma **P1000**, login par **503**). **Do raaste:** (A) `.env` mein wahi user/password/db rakho jo volume create hote waqt the (compose default pehle `pass123` tha agar tumne tab override na kiya ho), ya (B) volume dubara banao — poora flow [§5.2](#52-post-apiauthgenerate-token--500--503-p1000--password-mismatch).
@@ -102,10 +105,9 @@ openssl rand -base64 48
 
 ## 4) `docker-compose.yml` — kabhi bhi ye mat karna
 
-- **`./nginx/html:...` ko terminal command mat chalao** — wo YAML line hai, shell command nahi.
-- Agar compose edit karna ho to poori file valid rahe: top level `services:` / `version:`; sirf ek `- volume` line se file shuru mat karo (warna `yaml: construct errors`).
+- Agar compose edit karna ho to poori file valid rahe: top level `services:`; sirf ek `- volume` line se file shuru mat karo (warna `yaml: construct errors`).
 
-Is repo mein **nginx static** ke liye volume already compose mein hai; alag se paste karne ki zaroorat nahi.
+Reverse proxy ab root compose mein **`caddy`** service hai (`deploy/caddy/Caddyfile`). Purana `nginx/` folder reference / legacy docs mein ho sakta hai; compose usse bind nahi karta.
 
 ---
 
@@ -126,7 +128,7 @@ Health (server par):
 curl -s http://127.0.0.1/health
 ```
 
-Browser se: `http://YOUR_SERVER_IP/`
+Browser se: `http://YOUR_SERVER_IP/` (ya `https://` jab `.env` mein `CADDY_DOMAIN` set ho aur DNS sahi ho).
 
 ### 5.1) Default admin (`admin` / `admin123`)
 
@@ -208,7 +210,7 @@ scp "D:\path\to\local\file" root@YOUR_SERVER_IP:/opt/vahan360/
 ## 7) Production tips
 
 - Postgres port **5432** host par expose hai — public internet se DB protect karo (UFW block ya compose se host port hata do).
-- Domain + HTTPS: DNS A record → VPS IP; Certbot / SSL certs `nginx/ssl` + `nginx.conf` update.
+- Domain + HTTPS: DNS **A** (aur agar IPv6 use ho to **AAAA**) record → VPS IP; `/opt/vahan360/.env` mein `CADDY_DOMAIN=app.tumhara-domain.com` set karo, phir `docker compose up -d --build` — **Caddy** Let's Encrypt se certificate lega (ports **80/443** Internet se open hon).
 - `JWT_SECRET` rotate karne par sab users dubara login karenge.
 
 ---

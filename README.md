@@ -22,18 +22,19 @@ deploy/                    Cluster / infra manifests (Helm, Argo CD, k8s, standa
   prometheus/              Sample scrape config + alerting rules (Express /metrics + worker /metrics)
   loki/                    Minimal Loki config (compose profile `obs-loki`)
   promtail/                Docker log scrape → Loki
+  caddy/                   Caddyfile for root `docker-compose.yml` reverse proxy (TLS optional via `CADDY_DOMAIN`)
 docker/                    Dev notes only (`docker/postgres/README.md` — pgAdmin / local DB reset tips)
-nginx/                     Reverse-proxy config consumed by the root compose `nginx` service
+nginx/                     Legacy nginx snippets (root compose uses **Caddy** in `deploy/caddy/`)
 docs/                      Architecture / migration / audit / API contract / scaling docs
-docker-compose.yml         Postgres 5433, Redis, api-express, nginx; profiles `obs` (Prom+Grafana), `obs-loki` (Loki+Promtail)
+docker-compose.yml         Postgres 15432, Redis, api-express, web, **caddy**; profiles `obs` (Prom+Grafana), `obs-loki` (Loki+Promtail)
 ARCHITECTURE.md            Service map, Prisma schema split, queue mermaid, security/scaling notes
 .github/workflows/ci.yml   Build, Prisma validate, Helm lint/template, Nest Docker build (no push)
 turbo.json / pnpm-workspace.yaml   Turborepo pipeline (build/lint/dev/test/start) + workspace globs (`apps/*`, `packages/*`)
 ```
 
-> **Convention:** runnable services live under **`apps/*`**, reusable workspace libraries under **`packages/*`**, and cluster/infra assets under **`deploy/*`** (plus the root `docker-compose.yml`, `nginx/`, and `docker/` dev notes). New services should add a folder under `apps/` with its own `Dockerfile` referenced from compose / CI / Helm — keep packages free of Dockerfiles.
+> **Convention:** runnable services live under **`apps/*`**, reusable workspace libraries under **`packages/*`**, and cluster/infra assets under **`deploy/*`** (plus the root `docker-compose.yml`, `deploy/caddy/`, optional legacy `nginx/`, and `docker/` dev notes). Root compose **`caddy`** proxies **`/` → web** and **`/api/*` → api-express** (set **`CADDY_DOMAIN`** on the VPS for HTTPS). New services should add a folder under `apps/` with its own `Dockerfile` referenced from compose / CI / Helm — keep packages free of Dockerfiles.
 
-**Why some folders sit next to `apps/` (not inside it):** `deploy/`, `docs/`, `nginx/`, and root compose files are **infrastructure and documentation**, not shipped Node services. The runnable UI and APIs live under **`apps/web`**, **`apps/api-express`**, **`apps/api-nest`**, and **`apps/worker-ingest`**. For a table + glossary (control plane vs Nest v2, dual Prisma), see **`ARCHITECTURE.md`** (“Repo layout” / “Glossary”).
+**Why some folders sit next to `apps/` (not inside it):** `deploy/`, `docs/`, `nginx/` (legacy), and root compose files are **infrastructure and documentation**, not shipped Node services. The runnable UI and APIs live under **`apps/web`**, **`apps/api-express`**, **`apps/api-nest`**, and **`apps/worker-ingest`**. For a table + glossary (control plane vs Nest v2, dual Prisma), see **`ARCHITECTURE.md`** (“Repo layout” / “Glossary”).
 
 ## Running locally
 
@@ -381,7 +382,7 @@ Starter dashboards live in **`deploy/grafana/dashboards/`** as JSON (Grafana 10+
 
 ## Security roadmap (JWT storage)
 
-- **Ingress / rate limits:** when **`vahan360-api-express`** runs behind nginx or Kubernetes ingress, enable **`TRUST_PROXY=true`** (and tune **`TRUST_PROXY_HOPS`**) so **`express-rate-limit`** on **`POST /api/v1/scrape-jobs`** keys off the real client IP instead of the proxy. Set hops to match the number of trusted proxies only — too high allows **`X-Forwarded-For`** spoofing.
+- **Ingress / rate limits:** when **`vahan360-api-express`** runs behind **Caddy**, nginx, or Kubernetes ingress, enable **`TRUST_PROXY=true`** (and tune **`TRUST_PROXY_HOPS`**) so **`express-rate-limit`** on **`POST /api/v1/scrape-jobs`** keys off the real client IP instead of the proxy. Set hops to match the number of trusted proxies only — too high allows **`X-Forwarded-For`** spoofing.
 - **Today:** the Next app stores the JWT in **`localStorage`** (`spybot_token`) on several dashboard pages — convenient for SPA fetches but vulnerable to XSS exfiltration.
 - **TODO:** migrate to **httpOnly**, **Secure**, **SameSite** cookies, CSRF tokens for mutating requests, and tighten CSP. A short `TODO` is left on the login page; no cookie stub is wired yet to avoid a half-baked auth split.
 

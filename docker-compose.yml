@@ -17,7 +17,7 @@ services:
       # Same Redis service for BullMQ + optional cache (see apps/api-express .env.example)
       - REDIS_URL=redis://redis:6379
       - BULLMQ_REDIS_URL=redis://redis:6379
-      # Nginx sets X-Forwarded-* — trust one hop so req.ip / rate limits / cookie secure flag match client TLS
+      # Caddy sets X-Forwarded-* — trust one hop so req.ip / rate limits / cookie secure flag match client TLS
       - TRUST_PROXY=${TRUST_PROXY:-true}
       - TRUST_PROXY_HOPS=${TRUST_PROXY_HOPS:-1}
     depends_on:
@@ -29,7 +29,7 @@ services:
       - vahan360-network
     restart: unless-stopped
 
-  # Next.js UI (same stack as api-express; nginx serves `/` → web, `/api/` → api-express).
+  # Next.js UI (same stack as api-express; Caddy serves `/` → web, `/api/` → api-express).
   web:
     build:
       context: .
@@ -86,19 +86,22 @@ services:
       timeout: 3s
       retries: 5
 
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
+  # Caddy — automatic HTTPS when CADDY_DOMAIN is a public hostname (default :80 = HTTP only).
+  caddy:
+    image: caddy:2-alpine
     ports:
       - "80:80"
       - "443:443"
+      - "443:443/udp"
+    environment:
+      CADDY_DOMAIN: ${CADDY_DOMAIN:-:80}
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       api-express:
         condition: service_healthy
-      # Do not gate nginx on web "healthy" — Next can be slow to bind; libc6-compat + image HEALTHCHECK still apply to web.
       web:
         condition: service_started
     networks:
@@ -163,6 +166,8 @@ volumes:
   vahan360_pg_data:
   vahan360_loki_data:
   vahan360_promtail_positions:
+  caddy_data:
+  caddy_config:
 
 networks:
   vahan360-network:

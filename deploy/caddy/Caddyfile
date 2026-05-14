@@ -1,0 +1,18 @@
+# Reverse proxy for root docker-compose (replaces nginx).
+# CADDY_DOMAIN via compose defaults to :80 (HTTP). Set CADDY_DOMAIN=app.example.com
+# in .env on the VPS for automatic HTTPS (Let's Encrypt); DNS A/AAAA must point here.
+{$CADDY_DOMAIN} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api-express:3001
+	}
+
+	handle /health* {
+		reverse_proxy api-express:3001
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}
