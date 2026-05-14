@@ -29,5 +29,7 @@ jobs:
             cd /opt/vahan360
             git config --global --add safe.directory /opt/vahan360 || true
             git pull origin main
+            # Drop removed services (e.g. old backend/frontend) so host ports like 3001 are free for api-express
+            docker compose down --remove-orphans || true
             docker compose up -d --build
             docker compose ps

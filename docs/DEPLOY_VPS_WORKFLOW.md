@@ -216,7 +216,7 @@ scp "D:\path\to\local\file" root@YOUR_SERVER_IP:/opt/vahan360/
 ## 8) GitHub Actions — push / manual se VPS auto deploy (SSH)
 
 Repo mein workflow: [`deploy-vps.yml`](../.github/workflows/deploy-vps.yml).  
-`main` par **push** hone par ya **Actions → Deploy VPS → Run workflow** (`workflow_dispatch`) se VPS par `git pull` + `docker compose up -d --build` chalega.
+`main` par **push** hone par ya **Actions → Deploy VPS → Run workflow** (`workflow_dispatch`) se VPS par `git pull`, phir **`docker compose down --remove-orphans`** (purane `backend`/`frontend` orphans + port clash avoid), phir **`docker compose up -d --build`** chalega.
 
 ### 8.1) VPS par deploy SSH key (recommended: alag key, sirf deploy)
 
@@ -296,6 +296,7 @@ chmod +x /opt/vahan360/scripts/deploy-on-vps.sh
 | Auto | `main` par push → GitHub Actions **Deploy VPS** (Secrets set hon) |
 | Manual | `cd /opt/vahan360 && git pull origin main` |
 | | `.env` check (missing vars nahi) |
+| | `docker compose down --remove-orphans` (purane `backend`/`frontend` orphans — **3001** clash fix) |
 | | `docker compose up -d --build` |
 | | `docker compose ps` + `/health` |
 
